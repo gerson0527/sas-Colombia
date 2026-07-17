@@ -1,0 +1,98 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 40% 98%;
+    --foreground: 200 30% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 200 30% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 200 30% 12%;
+    --primary: 187 85% 25%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 200 25% 94%;
+    --secondary-foreground: 200 30% 18%;
+    --muted: 200 25% 95%;
+    --muted-foreground: 200 15% 42%;
+    --accent: 173 58% 41%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 71% 38%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 30 50% 12%;
+    --info: 210 80% 50%;
+    --info-foreground: 0 0% 100%;
+    --border: 200 25% 90%;
+    --input: 200 25% 90%;
+    --ring: 187 85% 25%;
+    --chart-1: 187 85% 35%;
+    --chart-2: 142 71% 45%;
+    --chart-3: 38 92% 55%;
+    --chart-4: 0 72% 55%;
+    --chart-5: 173 58% 45%;
+    --radius: 0.625rem;
+  }
+  .dark {
+    --background: 200 32% 8%;
+    --foreground: 200 20% 96%;
+    --card: 200 30% 11%;
+    --card-foreground: 200 20% 96%;
+    --popover: 200 30% 11%;
+    --popover-foreground: 200 20% 96%;
+    --primary: 187 80% 45%;
+    --primary-foreground: 200 40% 8%;
+    --secondary: 200 25% 18%;
+    --secondary-foreground: 200 20% 96%;
+    --muted: 200 25% 16%;
+    --muted-foreground: 200 15% 65%;
+    --accent: 173 58% 50%;
+    --accent-foreground: 200 40% 8%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 60% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 30 50% 8%;
+    --info: 210 80% 60%;
+    --info-foreground: 0 0% 100%;
+    --border: 200 25% 20%;
+    --input: 200 25% 20%;
+    --ring: 187 80% 45%;
+    --chart-1: 187 80% 50%;
+    --chart-2: 142 60% 50%;
+    --chart-3: 38 92% 60%;
+    --chart-4: 0 62% 55%;
+    --chart-5: 173 58% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+}
+
+@layer utilities {
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, hsl(var(--border) / 0.4) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--border) / 0.4) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 9999px;
+  }
+}
