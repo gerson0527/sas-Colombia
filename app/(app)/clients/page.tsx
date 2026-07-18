@@ -52,7 +52,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { EmptyState } from '@/components/empty-state';
-import { mockClientes } from '@/lib/mock-data';
+import { useClientes } from '@/hooks/use-supabase-data';
 import {
   TIPO_IDENTIFICACION_META,
   REGIMEN_META,
@@ -94,7 +94,7 @@ const empty: Omit<Cliente, 'id' | 'createdAt'> = {
 
 export default function ClientsPage() {
   const [search, setSearch] = useState('');
-  const [items, setItems] = useState<Cliente[]>(mockClientes);
+  const { data: items, loading, error, create, update, remove } = useClientes();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<Cliente | null>(null);
   const [form, setForm] = useState(empty);
@@ -131,7 +131,7 @@ export default function ClientsPage() {
     }));
   }
 
-  function save() {
+  async function save() {
     if (!form.razonSocial || !form.identificacion || !form.email) {
       toast.error('Completa razón social, identificación y email.');
       return;
@@ -141,23 +141,21 @@ export default function ClientsPage() {
       return;
     }
     if (editing) {
-      setItems((prev) => prev.map((c) => (c.id === editing.id ? { ...c, ...form } : c)));
-      toast.success('Cliente actualizado');
+      const ok = await update(editing.id, form);
+      if (ok) toast.success('Cliente actualizado');
+      else toast.error('No se pudo actualizar el cliente.');
     } else {
-      const newClient: Cliente = {
-        ...form,
-        id: `cli-${Date.now()}`,
-        createdAt: new Date().toISOString(),
-      };
-      setItems((prev) => [newClient, ...prev]);
-      toast.success('Cliente creado');
+      const created = await create(form);
+      if (created) toast.success('Cliente creado');
+      else toast.error('No se pudo crear el cliente.');
     }
     setSheetOpen(false);
   }
 
-  function remove(id: string) {
-    setItems((prev) => prev.filter((c) => c.id !== id));
-    toast.success('Cliente eliminado');
+  async function removeClient(id: string) {
+    const ok = await remove(id);
+    if (ok) toast.success('Cliente eliminado');
+    else toast.error('No se pudo eliminar el cliente.');
   }
 
   return (
@@ -184,7 +182,15 @@ export default function ClientsPage() {
         </div>
       </Card>
 
-      {filtered.length === 0 ? (
+      {loading ? (
+        <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">
+          Cargando clientes…
+        </div>
+      ) : error ? (
+        <div className="flex items-center justify-center py-20 text-sm text-destructive">
+          Error: {error}
+        </div>
+      ) : filtered.length === 0 ? (
         <EmptyState
           icon={Users}
           title="Sin clientes"
@@ -260,7 +266,7 @@ export default function ClientsPage() {
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => remove(c.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            <AlertDialogAction onClick={() => removeClient(c.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                               Eliminar
                             </AlertDialogAction>
                           </AlertDialogFooter>

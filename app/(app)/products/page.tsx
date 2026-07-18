@@ -45,7 +45,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/empty-state';
-import { mockProductos } from '@/lib/mock-data';
+import { useProductos } from '@/hooks/use-supabase-data';
 import { UNIDADES_MEDIDA, IVA_OPCIONES } from '@/lib/constants';
 import { formatCOP } from '@/lib/format';
 import type { Producto } from '@/lib/types';
@@ -67,7 +67,7 @@ const empty: Omit<Producto, 'id'> = {
 
 export default function ProductsPage() {
   const [search, setSearch] = useState('');
-  const [items, setItems] = useState<Producto[]>(mockProductos);
+  const { data: items, loading, error, create, update, remove } = useProductos();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<Producto | null>(null);
   const [form, setForm] = useState(empty);
@@ -92,24 +92,27 @@ export default function ProductsPage() {
     setSheetOpen(true);
   }
 
-  function save() {
+  async function save() {
     if (!form.nombre || !form.codigo) {
       toast.error('Completa código y nombre del producto.');
       return;
     }
     if (editing) {
-      setItems((prev) => prev.map((p) => (p.id === editing.id ? { ...p, ...form } : p)));
-      toast.success('Producto actualizado');
+      const ok = await update(editing.id, form);
+      if (ok) toast.success('Producto actualizado');
+      else toast.error('No se pudo actualizar el producto.');
     } else {
-      setItems((prev) => [{ ...form, id: `prod-${Date.now()}` }, ...prev]);
-      toast.success('Producto creado');
+      const created = await create(form);
+      if (created) toast.success('Producto creado');
+      else toast.error('No se pudo crear el producto.');
     }
     setSheetOpen(false);
   }
 
-  function remove(id: string) {
-    setItems((prev) => prev.filter((p) => p.id !== id));
-    toast.success('Producto eliminado');
+  async function removeProduct(id: string) {
+    const ok = await remove(id);
+    if (ok) toast.success('Producto eliminado');
+    else toast.error('No se pudo eliminar el producto.');
   }
 
   return (
@@ -136,7 +139,15 @@ export default function ProductsPage() {
         </div>
       </Card>
 
-      {filtered.length === 0 ? (
+      {loading ? (
+        <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">
+          Cargando productos…
+        </div>
+      ) : error ? (
+        <div className="flex items-center justify-center py-20 text-sm text-destructive">
+          Error: {error}
+        </div>
+      ) : filtered.length === 0 ? (
         <EmptyState
           icon={Package}
           title="Sin productos"
@@ -198,7 +209,7 @@ export default function ProductsPage() {
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => remove(p.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            <AlertDialogAction onClick={() => removeProduct(p.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                               Eliminar
                             </AlertDialogAction>
                           </AlertDialogFooter>
