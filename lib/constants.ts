@@ -197,17 +197,17 @@ export const PERMISSION_MATRIX: Record<RolUsuario, Partial<Record<Permiso, boole
 // Items del sidebar visibles por rol
 export const SIDEBAR_ROUTES_BY_ROLE: Record<RolUsuario, string[]> = {
   admin: [
-    '/dashboard', '/pos', '/invoices/new', '/documents', '/credit-notes', '/debit-notes',
+    '/dashboard', '/pos', '/documents',
     '/invoicing-products', '/clients', '/suppliers', '/products', '/inventory',
     '/resolutions', '/cash-registers', '/reports', '/users', '/settings',
   ],
   supervisor: [
-    '/dashboard', '/pos', '/documents', '/credit-notes', '/debit-notes',
+    '/dashboard', '/pos', '/documents',
     '/clients', '/products', '/inventory', '/cash-registers', '/reports',
   ],
   cajero: ['/pos', '/cash-registers', '/clients'],
   contador: [
-    '/dashboard', '/documents', '/credit-notes', '/debit-notes', '/resolutions', '/reports',
+    '/dashboard', '/documents', '/resolutions', '/reports',
   ],
   solo_lectura: ['/dashboard', '/documents'],
 };

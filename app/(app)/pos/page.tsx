@@ -53,6 +53,8 @@ import {
 } from '@/components/ui/select';
 import { EstadoDianBadge } from '@/components/estado-badge';
 import { usePermissions } from '@/hooks/use-permissions';
+import { useCashSession } from '@/hooks/use-cash-session';
+import { useRouter } from 'next/navigation';
 import { mockProductos, mockClientes } from '@/lib/mock-data';
 import { MEDIO_PAGO_META, FORMA_PAGO_META, CATEGORIA_PRODUCTO_FACTURACION_META } from '@/lib/constants';
 import { formatCOP } from '@/lib/format';
@@ -86,6 +88,8 @@ const nextCartUid = () => `cart-${++cartUid}`;
 
 export default function POSPage() {
   const { can, limiteDescuento, sesion } = usePermissions();
+  const { sesionAbierta, sesionAnteriorAbierta, isYesterday } = useCashSession();
+  const router = useRouter();
   const [search, setSearch] = useState('');
   const [categoria, setCategoria] = useState('all');
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -123,8 +127,10 @@ export default function POSPage() {
         searchInputRef.current?.focus();
       } else if (e.key === 'F4') {
         e.preventDefault();
-        if (cart.length > 0) {
+        if (cart.length > 0 && sesionAbierta && !sesionAnteriorAbierta) {
           iniciarCobro();
+        } else if (cart.length > 0) {
+          cobrar();
         }
       } else if (e.key === 'Escape') {
         if (checkoutOpen || authOpen) return;
@@ -258,6 +264,18 @@ export default function POSPage() {
   }
 
   function cobrar() {
+    if (!sesionAbierta) {
+      toast.error('No hay una caja abierta', {
+        description: 'Debes abrir una sesión de caja antes de poder facturar.',
+      });
+      return;
+    }
+    if (sesionAnteriorAbierta) {
+      toast.error('Hay una caja abierta de un día anterior', {
+        description: 'Cierra la sesión anterior en /cash-registers antes de continuar.',
+      });
+      return;
+    }
     setProcesando(true);
     const numero = `FE-${Math.floor(18000 + Math.random() * 9999)}`;
     setTimeout(() => {
@@ -301,7 +319,57 @@ export default function POSPage() {
   const vueltas = medioPago === 'efectivo' ? Math.max(0, efectivoRecibido - totals.total) : 0;
 
   return (
-    <div className="flex h-[calc(100vh-64px-1.5rem)] flex-col gap-4 lg:flex-row">
+    <div className="flex flex-col gap-4">
+      {/* ===== Alertas de sesión de caja ===== */}
+      {sesionAnteriorAbierta && (
+        <div className="flex items-start gap-3 rounded-lg border-2 border-warning/40 bg-warning/10 p-4">
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
+          <div className="flex-1">
+            <p className="font-semibold text-warning">
+              Tienes una caja abierta de un día anterior
+            </p>
+            <p className="mt-1 text-sm text-foreground/80">
+              La caja <strong>{sesionAnteriorAbierta.caja.nombre}</strong> quedó abierta desde{' '}
+              {new Date(sesionAnteriorAbierta.fechaApertura).toLocaleString('es-CO')}.
+              Para facturar hoy debes <strong>cerrarla</strong> primero y luego abrir una nueva sesión del día de hoy.
+            </p>
+            <div className="mt-2 flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => router.push('/cash-registers')}
+              >
+                Ir a Cajas
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {!sesionAbierta && !sesionAnteriorAbierta && (
+        <div className="flex items-start gap-3 rounded-lg border-2 border-warning/40 bg-warning/10 p-4">
+          <Lock className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
+          <div className="flex-1">
+            <p className="font-semibold text-warning">
+              No hay una caja abierta
+            </p>
+            <p className="mt-1 text-sm text-foreground/80">
+              Para poder facturar, primero debes <strong>abrir una sesión de caja</strong> del día de hoy.
+              Cada día de operación debes abrir y cerrar tu caja para mantener el control del efectivo.
+            </p>
+            <div className="mt-2 flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => router.push('/cash-registers')}
+              >
+                Abrir caja
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex h-[calc(100vh-64px-1.5rem)] flex-col gap-4 lg:flex-row">
       {/* Left: product grid + search */}
       <div className="flex min-w-0 flex-1 flex-col gap-4">
         {/* Search bar */}
@@ -495,10 +563,14 @@ export default function POSPage() {
           <Button
             className="h-12 w-full text-base font-semibold"
             onClick={iniciarCobro}
-            disabled={cart.length === 0 || procesando}
+            disabled={cart.length === 0 || procesando || !sesionAbierta || !!sesionAnteriorAbierta}
           >
             {procesando ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CreditCard className="mr-2 h-5 w-5" />}
-            Cobrar <span className="ml-2 opacity-70">(F4)</span>
+            {!sesionAbierta
+              ? 'Caja cerrada'
+              : sesionAnteriorAbierta
+                ? 'Caja anterior abierta'
+                : <>Cobrar <span className="ml-2 opacity-70">(F4)</span></>}
           </Button>
         </div>
       </div>
@@ -654,6 +726,7 @@ export default function POSPage() {
         ticket={ticketVenta}
         onClose={nuevaVenta}
       />
+      </div>
     </div>
   );
 }

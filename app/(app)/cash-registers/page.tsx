@@ -53,14 +53,14 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { KpiCard } from '@/components/kpi-card';
 import { EmptyState } from '@/components/empty-state';
-import { mockCajas, mockSesionesCaja } from '@/lib/mock-data';
+import { mockCajas } from '@/lib/mock-data';
+import { useCashSession } from '@/hooks/use-cash-session';
 import { TIPO_MOVIMIENTO_CAJA_META, ESTADO_CAJA_META, MEDIO_PAGO_META } from '@/lib/constants';
 import { formatCOP, formatDateTime } from '@/lib/format';
 import type { Caja, SesionCaja, TipoMovimientoCaja, MedioPago } from '@/lib/types';
 
 export default function CashRegistersPage() {
-  const [cajas, setCajas] = useState<Caja[]>(mockCajas);
-  const [sesiones, setSesiones] = useState<SesionCaja[]>(mockSesionesCaja);
+  const { cajas, sesiones, abrirSesion: abrirSesionCtx, cerrarSesion: cerrarSesionCtx, agregarMovimiento: agregarMovimientoCtx } = useCashSession();
   const [cajaSheetOpen, setCajaSheetOpen] = useState(false);
   const [movSheetOpen, setMovSheetOpen] = useState(false);
   const [detailSesion, setDetailSesion] = useState<SesionCaja | null>(null);
@@ -82,21 +82,10 @@ export default function CashRegistersPage() {
   const sesionAbierta = sesiones.find((s) => s.estado === 'abierta');
 
   function addCaja() {
-    if (!cajaForm.nombre || !cajaForm.sucursal) {
-      toast.error('Completa nombre y sucursal.');
-      return;
-    }
-    const nueva: Caja = {
-      id: `caja-${Date.now()}`,
-      nombre: cajaForm.nombre,
-      sucursal: cajaForm.sucursal,
-      activa: true,
-      saldoBase: cajaForm.saldoBase,
-    };
-    setCajas((prev) => [...prev, nueva]);
-    toast.success('Caja creada');
+    toast.info('Función disponible en próxima versión', {
+      description: 'La creación de cajas requiere integración con backend.',
+    });
     setCajaSheetOpen(false);
-    setCajaForm({ nombre: '', sucursal: '', saldoBase: 100000 });
   }
 
   function abrirSesion(cajaId: string) {
@@ -106,23 +95,8 @@ export default function CashRegistersPage() {
       toast.error('Esta caja ya tiene una sesión abierta.');
       return;
     }
-    const nueva: SesionCaja = {
-      id: `ses-${Date.now()}`,
-      cajaId,
-      caja,
-      usuarioId: 'usr-1',
-      usuario: 'Diana Marcela Gómez',
-      fechaApertura: new Date().toISOString(),
-      saldoInicial: caja.saldoBase,
-      ingresos: 0,
-      egresos: 0,
-      ventas: 0,
-      saldoFinal: caja.saldoBase,
-      estado: 'abierta',
-      movimientos: [],
-    };
-    setSesiones((prev) => [nueva, ...prev]);
-    setCajas((prev) => prev.map((c) => (c.id === cajaId ? { ...c, responsableActual: nueva.usuario } : c)));
+    const nueva = abrirSesionCtx(cajaId, { id: 'usr-1', nombre: 'Diana Marcela Gómez' });
+    if (!nueva) return;
     toast.success('Sesión de caja abierta', { description: `${caja.nombre} · Saldo inicial ${formatCOP(caja.saldoBase)}` });
   }
 
@@ -137,24 +111,18 @@ export default function CashRegistersPage() {
   function confirmarCierreSesion() {
     if (!closeSesion) return;
     const sesionId = closeSesion.id;
-    setSesiones((prev) =>
-      prev.map((s) =>
-        s.id === sesionId
-          ? {
-              ...s,
-              estado: 'cerrada',
-              fechaCierre: new Date().toISOString(),
-              saldoFinal: s.saldoInicial + s.ingresos + s.ventas - s.egresos,
-              observaciones: closeObservaciones || undefined,
-            }
-          : s
-      )
-    );
-    const sesion = sesiones.find((s) => s.id === sesionId);
-    if (sesion) {
-      setCajas((prev) => prev.map((c) => (c.id === sesion.cajaId ? { ...c, responsableActual: undefined } : c)));
-    }
-    toast.success('Sesión de caja cerrada');
+    const efectivoEsperado =
+      closeSesion.saldoInicial + closeSesion.ingresos + closeSesion.ventas - closeSesion.egresos;
+    cerrarSesionCtx(sesionId, {
+      saldoFinal: conteoEfectivo,
+      observaciones: closeObservaciones || undefined,
+    });
+    toast.success('Sesión de caja cerrada', {
+      description:
+        conteoEfectivo !== efectivoEsperado
+          ? `Diferencia: ${formatCOP(conteoEfectivo - efectivoEsperado)}`
+          : 'Cuadre exacto',
+    });
     setCloseOpen(false);
     setCloseSesion(null);
   }
@@ -172,32 +140,12 @@ export default function CashRegistersPage() {
       toast.error('Ingresa un concepto.');
       return;
     }
-    setSesiones((prev) =>
-      prev.map((s) => {
-        if (s.id !== movForm.sesionId) return s;
-        const mov = {
-          id: `mc-${Date.now()}`,
-          sesionId: s.id,
-          tipo: movForm.tipo,
-          monto: movForm.monto,
-          concepto: movForm.concepto,
-          medioPago: movForm.medioPago,
-          usuario: s.usuario,
-          fecha: new Date().toISOString(),
-        };
-        const ingresos = s.ingresos + (movForm.tipo === 'ingreso' ? movForm.monto : 0);
-        const egresos = s.egresos + (movForm.tipo === 'egreso' || movForm.tipo === 'reembolso' ? movForm.monto : 0);
-        const ventas = s.ventas + (movForm.tipo === 'venta' || movForm.tipo === 'pago' ? movForm.monto : 0);
-        return {
-          ...s,
-          ingresos,
-          egresos,
-          ventas,
-          saldoFinal: s.saldoInicial + ingresos + ventas - egresos,
-          movimientos: [mov, ...s.movimientos],
-        };
-      })
-    );
+    agregarMovimientoCtx(movForm.sesionId, {
+      tipo: movForm.tipo,
+      monto: movForm.monto,
+      concepto: movForm.concepto,
+      medioPago: movForm.medioPago,
+    });
     toast.success('Movimiento registrado');
     setMovSheetOpen(false);
     setMovForm({ sesionId: '', tipo: 'ingreso', monto: 0, concepto: '', medioPago: 'efectivo' });

@@ -4,10 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
-  FilePlus2,
   FileText,
-  FileMinus2,
-  FilePlus,
   Users,
   Package,
   ScrollText,
@@ -54,10 +51,7 @@ const groups: NavGroup[] = [
     label: 'Punto de venta',
     items: [
       { label: 'Nueva venta', href: '/pos', icon: ShoppingCart },
-      { label: 'Nueva factura', href: '/invoices/new', icon: FilePlus2 },
       { label: 'Documentos', href: '/documents', icon: FileText },
-      { label: 'Notas crédito', href: '/credit-notes', icon: FileMinus2 },
-      { label: 'Notas débito', href: '/debit-notes', icon: FilePlus },
       { label: 'Productos de facturación', href: '/invoicing-products', icon: FileSpreadsheet },
     ],
   },
