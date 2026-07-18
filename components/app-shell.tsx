@@ -17,7 +17,7 @@ import {
   AlertTriangle,
   ShieldCheck,
 } from 'lucide-react';
-import { useTheme } from 'next-themes';
+import { useTheme } from '@/components/theme-provider';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
@@ -38,7 +38,8 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { theme, setTheme } = useTheme();
+  const themeContext = useTheme();
+  const theme = themeContext.theme;
   const { sesion, rol, switchRole, can } = usePermissions();
   const ambiente = mockEmpresa.ambiente;
   const isHab = ambiente === 'habilitacion';
@@ -125,10 +126,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 variant="ghost"
                 size="icon"
                 aria-label="Cambiar tema"
-                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                onClick={() => themeContext.toggleTheme()}
+                title={theme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
               >
-                <Sun className="h-4 w-4 dark:hidden" />
-                <Moon className="hidden h-4 w-4 dark:block" />
+                <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+                <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+                <span className="sr-only">Cambiar tema</span>
               </Button>
 
               <DropdownMenu>
