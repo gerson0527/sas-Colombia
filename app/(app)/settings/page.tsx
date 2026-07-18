@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import {
   Building2,
@@ -29,14 +29,36 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/ui/tabs';
-import { mockEmpresa } from '@/lib/mock-data';
+import { useEmpresa } from '@/hooks/use-supabase-data';
 import { REGIMEN_META, AMBIENTE_META, DEPARTAMENTOS_COL } from '@/lib/constants';
 import { formatDate, daysUntil } from '@/lib/format';
-import type { Ambiente, RegimenTributario } from '@/lib/types';
+import type { Ambiente, RegimenTributario, ConfiguracionEmpresa } from '@/lib/types';
+
+const emptyEmpresa: ConfiguracionEmpresa = {
+  id: '',
+  nit: '',
+  dv: '',
+  razonSocial: '',
+  regimenTributario: 'responsable_iva',
+  responsabilidadesFiscales: [],
+  direccion: '',
+  ciudad: '',
+  departamento: '',
+  telefono: '',
+  email: '',
+  ambiente: 'habilitacion',
+  certificadoDigitalCargado: false,
+  monedaLocal: 'COP',
+};
 
 export default function SettingsPage() {
-  const [form, setForm] = useState(mockEmpresa);
+  const { data: empresa, loading, error, update } = useEmpresa();
+  const [form, setForm] = useState<ConfiguracionEmpresa>(emptyEmpresa);
   const [certFile, setCertFile] = useState<File | null>(null);
+
+  useEffect(() => {
+    if (empresa) setForm(empresa);
+  }, [empresa]);
 
   const certDays = daysUntil(form.fechaVencimientoCertificado);
   const certStatus =
@@ -50,20 +72,29 @@ export default function SettingsPage() {
       ? 'warning'
       : 'ok';
 
-  function saveCompany() {
-    toast.success('Configuración de empresa actualizada');
+  async function saveCompany() {
+    const ok = await update(form);
+    if (ok) toast.success('Configuración de empresa actualizada');
+    else toast.error('Error al guardar la configuración');
   }
 
-  function uploadCert() {
+  async function uploadCert() {
     if (!certFile) {
       toast.error('Selecciona un archivo .p12 primero.');
       return;
     }
+    await update({ certificadoDigitalCargado: true });
     toast.success('Certificado cargado', {
       description: 'El backend validará la contraseña y vigencia del .p12.',
     });
     setForm((f) => ({ ...f, certificadoDigitalCargado: true }));
     setCertFile(null);
+  }
+
+  async function saveAmbiente() {
+    const ok = await update({ ambiente: form.ambiente });
+    if (ok) toast.success('Ambiente actualizado');
+    else toast.error('Error al actualizar ambiente');
   }
 
   return (
@@ -72,6 +103,17 @@ export default function SettingsPage() {
         title="Configuración de empresa"
         description="Datos del emisor, ambiente DIAN y certificado digital."
       />
+
+      {loading && (
+        <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">
+          Cargando configuración…
+        </div>
+      )}
+      {error && (
+        <div className="flex items-center justify-center py-20 text-sm text-destructive">
+          Error: {error}
+        </div>
+      )}
 
       <Tabs defaultValue="company">
         <TabsList>
@@ -208,7 +250,7 @@ export default function SettingsPage() {
               )}
               <Separator />
               <div className="flex justify-end">
-                <Button onClick={() => toast.success('Ambiente actualizado')}>Guardar ambiente</Button>
+                <Button onClick={saveAmbiente}>Guardar ambiente</Button>
               </div>
             </CardContent>
           </Card>

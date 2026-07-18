@@ -29,7 +29,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { EstadoDianBadge } from '@/components/estado-badge';
-import { mockDocumentos, mockEmpresa } from '@/lib/mock-data';
+import { useDocumentoById, useClientes, useEmpresa } from '@/hooks/use-supabase-data';
 import {
   TIPO_DOCUMENTO_META,
   FORMA_PAGO_META,
@@ -41,17 +41,28 @@ import { formatCOP, formatDateTime, truncateMiddle } from '@/lib/format';
 export default function DocumentDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const doc = mockDocumentos.find((d) => d.id === params.id);
+  const { data: doc, loading, error } = useDocumentoById(params.id);
+  const { data: clientes } = useClientes();
+  const { data: empresa } = useEmpresa();
   const [copied, setCopied] = useState<'cufe' | 'cude' | null>(null);
 
-  if (!doc) {
+  const cliente = doc ? clientes.find((c) => c.id === doc.clienteId) : undefined;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">
+        Cargando documento…
+      </div>
+    );
+  }
+  if (error || !doc) {
     return (
       <div className="space-y-4">
         <Button asChild variant="ghost" size="sm">
           <Link href="/documents"><ArrowLeft className="mr-2 h-4 w-4" /> Volver</Link>
         </Button>
         <Card className="p-10 text-center">
-          <p className="text-sm text-muted-foreground">Documento no encontrado.</p>
+          <p className="text-sm text-muted-foreground">{error || 'Documento no encontrado.'}</p>
         </Card>
       </div>
     );
@@ -113,10 +124,10 @@ export default function DocumentDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-1 text-sm">
-                <p className="font-semibold">{mockEmpresa.razonSocial}</p>
-                <p className="text-muted-foreground">NIT {mockEmpresa.nit}-{mockEmpresa.dv}</p>
-                <p className="text-muted-foreground">{mockEmpresa.direccion}, {mockEmpresa.ciudad}</p>
-                <p className="text-muted-foreground">{mockEmpresa.email}</p>
+                <p className="font-semibold">{empresa?.razonSocial || '—'}</p>
+                <p className="text-muted-foreground">NIT {empresa?.nit || '—'}-{empresa?.dv || ''}</p>
+                <p className="text-muted-foreground">{empresa?.direccion || '—'}, {empresa?.ciudad || '—'}</p>
+                <p className="text-muted-foreground">{empresa?.email || '—'}</p>
               </CardContent>
             </Card>
             <Card>
@@ -126,10 +137,10 @@ export default function DocumentDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-1 text-sm">
-                <p className="font-semibold">{doc.cliente.razonSocial}</p>
-                <p className="text-muted-foreground">{doc.cliente.identificacion}{doc.cliente.dv ? '-' + doc.cliente.dv : ''}</p>
-                <p className="text-muted-foreground">{doc.cliente.direccion}, {doc.cliente.ciudad}</p>
-                <p className="text-muted-foreground">{doc.cliente.email}</p>
+                <p className="font-semibold">{cliente?.razonSocial || '—'}</p>
+                <p className="text-muted-foreground">{cliente?.identificacion || '—'}{cliente?.dv ? '-' + cliente.dv : ''}</p>
+                <p className="text-muted-foreground">{cliente?.direccion || '—'}, {cliente?.ciudad || '—'}</p>
+                <p className="text-muted-foreground">{cliente?.email || '—'}</p>
               </CardContent>
             </Card>
           </div>

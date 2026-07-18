@@ -34,7 +34,7 @@ import {
 } from '@/components/ui/select';
 import { EstadoDianBadge } from '@/components/estado-badge';
 import { EmptyState } from '@/components/empty-state';
-import { mockDocumentos } from '@/lib/mock-data';
+import { useDocumentos, useClientes } from '@/hooks/use-supabase-data';
 import { formatCOP, formatShortDate } from '@/lib/format';
 
 const motivos = [
@@ -49,15 +49,18 @@ export default function DebitNotesPage() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [facturaOrigen, setFacturaOrigen] = useState('');
   const [motivo, setMotivo] = useState(motivos[0]);
+  const { data: documentos, loading, error } = useDocumentos();
+  const { data: clientes } = useClientes();
 
-  const notas = mockDocumentos.filter((d) => d.tipoDocumento === 'nota_debito');
-  const facturas = mockDocumentos.filter((d) => d.tipoDocumento === 'factura_venta');
+  const clienteMap = new Map(clientes.map((c) => [c.id, c]));
+  const notas = documentos.filter((d) => d.tipoDocumento === 'nota_debito');
+  const facturas = documentos.filter((d) => d.tipoDocumento === 'factura_venta');
 
   const filtered = search
     ? notas.filter(
         (n) =>
           n.numero.toLowerCase().includes(search.toLowerCase()) ||
-          n.cliente.razonSocial.toLowerCase().includes(search.toLowerCase())
+          (clienteMap.get(n.clienteId)?.razonSocial.toLowerCase().includes(search.toLowerCase()) ?? false)
       )
     : notas;
 
@@ -95,7 +98,15 @@ export default function DebitNotesPage() {
         </div>
       </Card>
 
-      {filtered.length === 0 ? (
+      {loading ? (
+        <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">
+          Cargando notas débito…
+        </div>
+      ) : error ? (
+        <div className="flex items-center justify-center py-20 text-sm text-destructive">
+          Error: {error}
+        </div>
+      ) : filtered.length === 0 ? (
         <EmptyState
           icon={FilePlus}
           title="Sin notas débito"
@@ -120,7 +131,7 @@ export default function DebitNotesPage() {
               {filtered.map((n) => (
                 <TableRow key={n.id}>
                   <TableCell className="font-mono text-xs font-medium">{n.numero}</TableCell>
-                  <TableCell className="text-sm">{n.cliente.razonSocial}</TableCell>
+                  <TableCell className="text-sm">{clienteMap.get(n.clienteId)?.razonSocial ?? '—'}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{formatShortDate(n.fechaEmision)}</TableCell>
                   <TableCell className="text-right font-medium">{formatCOP(n.total)}</TableCell>
                   <TableCell><EstadoDianBadge estado={n.estadoDian} /></TableCell>
@@ -151,7 +162,7 @@ export default function DebitNotesPage() {
                 <SelectContent>
                   {facturas.map((f) => (
                     <SelectItem key={f.id} value={f.numero}>
-                      {f.numero} · {f.cliente.razonSocial} · {formatCOP(f.total)}
+                      {f.numero} · {clienteMap.get(f.clienteId)?.razonSocial ?? '—'} · {formatCOP(f.total)}
                     </SelectItem>
                   ))}
                 </SelectContent>

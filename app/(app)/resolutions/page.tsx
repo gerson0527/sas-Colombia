@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { mockResoluciones } from '@/lib/mock-data';
+import { useResoluciones } from '@/hooks/use-supabase-data';
 import { TIPO_DOCUMENTO_META } from '@/lib/constants';
 import { formatShortDate, daysUntil } from '@/lib/format';
 import type { ResolucionDian, TipoDocumento } from '@/lib/types';
@@ -40,11 +40,11 @@ const empty = {
 };
 
 export default function ResolutionsPage() {
-  const [items, setItems] = useState<ResolucionDian[]>(mockResoluciones);
+  const { data: items, loading, error, create } = useResoluciones();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [form, setForm] = useState(empty);
 
-  function save() {
+  async function save() {
     if (!form.numeroResolucion || !form.prefijo || !form.fechaVigenciaDesde || !form.fechaVigenciaHasta) {
       toast.error('Completa todos los campos de la resolución.');
       return;
@@ -53,22 +53,23 @@ export default function ResolutionsPage() {
       toast.error('El rango hasta debe ser mayor al rango desde.');
       return;
     }
-    const nueva: ResolucionDian = {
-      id: `res-${Date.now()}`,
+    const created = await create({
       numeroResolucion: form.numeroResolucion,
       tipoDocumento: form.tipoDocumento,
       prefijo: form.prefijo,
       rangoDesde: form.rangoDesde,
       rangoHasta: form.rangoHasta,
-      consecutivoActual: form.rangoDesde,
       fechaVigenciaDesde: form.fechaVigenciaDesde,
       fechaVigenciaHasta: form.fechaVigenciaHasta,
       activa: true,
-    };
-    setItems((prev) => [nueva, ...prev]);
-    toast.success('Resolución registrada');
-    setSheetOpen(false);
-    setForm(empty);
+    });
+    if (created) {
+      toast.success('Resolución registrada');
+      setSheetOpen(false);
+      setForm(empty);
+    } else {
+      toast.error('No se pudo registrar la resolución.');
+    }
   }
 
   return (
@@ -84,7 +85,15 @@ export default function ResolutionsPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {items.map((r) => {
+        {loading ? (
+          <div className="col-span-full flex items-center justify-center py-20 text-sm text-muted-foreground">
+            Cargando resoluciones…
+          </div>
+        ) : error ? (
+          <div className="col-span-full flex items-center justify-center py-20 text-sm text-destructive">
+            Error: {error}
+          </div>
+        ) : items.map((r) => {
           const usage = (r.consecutivoActual / r.rangoHasta) * 100;
           const days = daysUntil(r.fechaVigenciaHasta);
           const nearExpiry = days !== null && days < 90;

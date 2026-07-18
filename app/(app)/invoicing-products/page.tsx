@@ -56,7 +56,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { EmptyState } from '@/components/empty-state';
-import { mockProductosFacturacion, mockProductos } from '@/lib/mock-data';
+import { useProductosFacturacion, useProductos } from '@/hooks/use-supabase-data';
 import {
   CATEGORIA_PRODUCTO_FACTURACION_META,
   UNIDADES_MEDIDA_DIAN,
@@ -65,6 +65,7 @@ import {
 } from '@/lib/constants';
 import { formatCOP } from '@/lib/format';
 import type {
+  Producto,
   ProductoFacturacion,
   CategoriaProductoFacturacion,
   UnidadMedidaDIAN,
@@ -78,7 +79,7 @@ function emptyTributo(): TributoInfo {
 
 const emptyForm: Omit<ProductoFacturacion, 'id'> = {
   productoId: '',
-  producto: mockProductos[0],
+  producto: {} as Producto,
   categoria: 'servicios',
   precioConImpuestos: 0,
   tributos: [emptyTributo()],
@@ -95,7 +96,8 @@ const emptyForm: Omit<ProductoFacturacion, 'id'> = {
 
 export default function InvoicingProductsPage() {
   const [search, setSearch] = useState('');
-  const [items, setItems] = useState<ProductoFacturacion[]>(mockProductosFacturacion);
+  const { data: productos } = useProductos();
+  const { data: items, loading, error, create, update, remove } = useProductosFacturacion(productos);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<ProductoFacturacion | null>(null);
   const [form, setForm] = useState<Omit<ProductoFacturacion, 'id'>>(emptyForm);
@@ -123,7 +125,7 @@ export default function InvoicingProductsPage() {
   }
 
   function onProductoChange(productoId: string) {
-    const prod = mockProductos.find((p) => p.id === productoId);
+    const prod = productos.find((p) => p.id === productoId);
     if (!prod) return;
     setForm((f) => ({
       ...f,
@@ -150,7 +152,7 @@ export default function InvoicingProductsPage() {
     setForm((f) => ({ ...f, tributos: f.tributos.filter((_, i) => i !== idx) }));
   }
 
-  function save() {
+  async function save() {
     if (!form.productoId) {
       toast.error('Selecciona un producto.');
       return;
@@ -160,18 +162,21 @@ export default function InvoicingProductsPage() {
       return;
     }
     if (editing) {
-      setItems((prev) => prev.map((p) => (p.id === editing.id ? { ...p, ...form } : p)));
-      toast.success('Configuración actualizada');
+      const ok = await update(editing.id, form);
+      if (ok) toast.success('Configuración actualizada');
+      else toast.error('No se pudo actualizar.');
     } else {
-      setItems((prev) => [{ ...form, id: `pf-${Date.now()}` }, ...prev]);
-      toast.success('Producto de facturación creado');
+      const created = await create(form);
+      if (created) toast.success('Producto de facturación creado');
+      else toast.error('No se pudo crear.');
     }
     setSheetOpen(false);
   }
 
-  function remove(id: string) {
-    setItems((prev) => prev.filter((p) => p.id !== id));
-    toast.success('Producto de facturación eliminado');
+  async function removeItem(id: string) {
+    const ok = await remove(id);
+    if (ok) toast.success('Producto de facturación eliminado');
+    else toast.error('No se pudo eliminar.');
   }
 
   return (
@@ -198,7 +203,15 @@ export default function InvoicingProductsPage() {
         </div>
       </Card>
 
-      {filtered.length === 0 ? (
+      {loading ? (
+        <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">
+          Cargando productos de facturación…
+        </div>
+      ) : error ? (
+        <div className="flex items-center justify-center py-20 text-sm text-destructive">
+          Error: {error}
+        </div>
+      ) : filtered.length === 0 ? (
         <EmptyState
           icon={FileSpreadsheet}
           title="Sin productos de facturación"
@@ -270,7 +283,7 @@ export default function InvoicingProductsPage() {
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => remove(p.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            <AlertDialogAction onClick={() => removeItem(p.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                               Eliminar
                             </AlertDialogAction>
                           </AlertDialogFooter>
@@ -303,7 +316,7 @@ export default function InvoicingProductsPage() {
                 <Select value={form.productoId} onValueChange={onProductoChange}>
                   <SelectTrigger><SelectValue placeholder="Selecciona…" /></SelectTrigger>
                   <SelectContent>
-                    {mockProductos.map((p) => (
+                    {productos.map((p) => (
                       <SelectItem key={p.id} value={p.id}>{p.codigo} · {p.nombre}</SelectItem>
                     ))}
                   </SelectContent>

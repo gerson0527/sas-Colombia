@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { mockCajas, mockSesionesCaja } from '@/lib/mock-data';
+import { supabase } from '@/lib/supabase-client';
 import type { Caja, SesionCaja } from '@/lib/types';
 
 interface CashSessionContextValue {
@@ -17,35 +17,21 @@ interface CashSessionContextValue {
   sesiones: SesionCaja[];
   sesionAbierta: SesionCaja | null;
   sesionAnteriorAbierta: SesionCaja | null;
-  abrirSesion: (cajaId: string, usuario?: { id: string; nombre: string }) => SesionCaja | null;
-  cerrarSesion: (sesionId: string, opciones?: { saldoFinal?: number; observaciones?: string }) => void;
+  abrirSesion: (cajaId: string, usuario?: { id: string; nombre: string }) => Promise<SesionCaja | null>;
+  cerrarSesion: (sesionId: string, opciones?: { saldoFinal?: number; observaciones?: string }) => Promise<void>;
   agregarMovimiento: (
     sesionId: string,
     mov: { tipo: 'ingreso' | 'egreso' | 'venta' | 'pago' | 'reembolso'; monto: number; concepto: string; medioPago?: string }
-  ) => void;
-  registrarVenta: (sesionId: string, monto: number) => void;
+  ) => Promise<void>;
+  registrarVenta: (sesionId: string, monto: number) => Promise<void>;
   refrescar: () => void;
-  /** Date en formato YYYY-MM-DD */
   hoy: () => string;
   isYesterday: (fechaIso: string) => boolean;
+  loading: boolean;
+  error: string | null;
 }
 
 const CashSessionContext = createContext<CashSessionContextValue | null>(null);
-
-const STORAGE_KEY = 'sas.cash-sessions.v1';
-
-function loadInitial(): SesionCaja[] {
-  if (typeof window === 'undefined') return mockSesionesCaja;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return mockSesionesCaja;
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return parsed as SesionCaja[];
-  } catch {
-    // ignore
-  }
-  return mockSesionesCaja;
-}
 
 function isSameDay(aIso: string, bIso: string): boolean {
   const a = new Date(aIso);
@@ -65,32 +51,126 @@ function isYesterday(fechaIso: string): boolean {
   return isSameDay(fechaIso, ayer.toISOString());
 }
 
+interface CajaRow {
+  id: string;
+  nombre: string;
+  sucursal: string;
+  responsable_actual: string | null;
+  activa: boolean;
+  saldo_base: number;
+}
+
+interface SesionRow {
+  id: string;
+  caja_id: string;
+  usuario_id: string | null;
+  usuario: string;
+  fecha_apertura: string;
+  fecha_cierre: string | null;
+  saldo_inicial: number;
+  ingresos: number;
+  egresos: number;
+  ventas: number;
+  saldo_final: number;
+  estado: string;
+  observaciones: string | null;
+}
+
+interface MovimientoRow {
+  id: string;
+  sesion_id: string;
+  tipo: string;
+  monto: number;
+  concepto: string;
+  medio_pago: string | null;
+  usuario: string;
+  fecha: string;
+}
+
+function mapCaja(r: CajaRow): Caja {
+  return {
+    id: r.id,
+    nombre: r.nombre,
+    sucursal: r.sucursal,
+    responsableActual: r.responsable_actual || undefined,
+    activa: r.activa,
+    saldoBase: Number(r.saldo_base),
+  };
+}
+
 export function CashSessionProvider({ children }: { children: ReactNode }) {
-  const [sesiones, setSesiones] = useState<SesionCaja[]>(mockSesionesCaja);
-  const [hydrated, setHydrated] = useState(false);
+  const [cajas, setCajas] = useState<Caja[]>([]);
+  const [sesiones, setSesiones] = useState<SesionCaja[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
 
-  // Cargar desde localStorage al montar (cliente)
-  useEffect(() => {
-    setSesiones(loadInitial());
-    setHydrated(true);
-  }, []);
+  const refrescar = useCallback(() => setTick((t) => t + 1), []);
 
-  // Persistir cada cambio
   useEffect(() => {
-    if (!hydrated || typeof window === 'undefined') return;
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sesiones));
-    } catch {
-      // ignore quota errors
-    }
-  }, [sesiones, hydrated]);
+    let active = true;
+    setLoading(true);
+    (async () => {
+      const [cajasRes, sesionesRes, movsRes] = await Promise.all([
+        supabase.from('cajas').select('*').order('created_at', { ascending: false }),
+        supabase.from('sesiones_caja').select('*').order('created_at', { ascending: false }),
+        supabase.from('movimientos_caja').select('*').order('fecha', { ascending: false }),
+      ]);
+      if (!active) return;
+      if (cajasRes.error || sesionesRes.error) {
+        setError(cajasRes.error?.message || sesionesRes.error?.message || 'Error');
+        setLoading(false);
+        return;
+      }
+      const cajasData = (cajasRes.data as CajaRow[]).map(mapCaja);
+      const cajaMap = new Map(cajasData.map((c) => [c.id, c]));
+      const movsBySesion = new Map<string, SesionCaja['movimientos']>();
+      (movsRes.data as MovimientoRow[] || []).forEach((m) => {
+        const arr = movsBySesion.get(m.sesion_id) || [];
+        arr.push({
+          id: m.id,
+          sesionId: m.sesion_id,
+          tipo: m.tipo as SesionCaja['movimientos'][number]['tipo'],
+          monto: Number(m.monto),
+          concepto: m.concepto,
+          medioPago: (m.medio_pago as SesionCaja['movimientos'][number]['medioPago']) || undefined,
+          usuario: m.usuario,
+          fecha: m.fecha,
+        });
+        movsBySesion.set(m.sesion_id, arr);
+      });
+      const sesionesData = (sesionesRes.data as SesionRow[]).map((s) => ({
+        id: s.id,
+        cajaId: s.caja_id,
+        caja: cajaMap.get(s.caja_id) || ({} as Caja),
+        usuarioId: s.usuario_id || '',
+        usuario: s.usuario,
+        fechaApertura: s.fecha_apertura,
+        fechaCierre: s.fecha_cierre || undefined,
+        saldoInicial: Number(s.saldo_inicial),
+        ingresos: Number(s.ingresos),
+        egresos: Number(s.egresos),
+        ventas: Number(s.ventas),
+        saldoFinal: Number(s.saldo_final),
+        estado: s.estado as 'abierta' | 'cerrada',
+        movimientos: movsBySesion.get(s.id) || [],
+        observaciones: s.observaciones || undefined,
+      }));
+      setCajas(cajasData);
+      setSesiones(sesionesData);
+      setError(null);
+      setLoading(false);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [tick]);
 
   const sesionAbierta = useMemo(
     () => sesiones.find((s) => s.estado === 'abierta') ?? null,
     [sesiones]
   );
 
-  // Sesión abierta de un día anterior (necesita cerrarse antes de abrir otra)
   const sesionAnteriorAbierta = useMemo(() => {
     if (!sesionAbierta) return null;
     if (isSameDay(sesionAbierta.fechaApertura, new Date().toISOString())) return null;
@@ -98,22 +178,42 @@ export function CashSessionProvider({ children }: { children: ReactNode }) {
   }, [sesionAbierta]);
 
   const abrirSesion = useCallback(
-    (
+    async (
       cajaId: string,
       usuario?: { id: string; nombre: string }
-    ): SesionCaja | null => {
-      const caja = mockCajas.find((c) => c.id === cajaId);
+    ): Promise<SesionCaja | null> => {
+      const caja = cajas.find((c) => c.id === cajaId);
       if (!caja) return null;
       if (sesiones.some((s) => s.cajaId === cajaId && s.estado === 'abierta')) {
         return null;
       }
+      const insertRow = {
+        caja_id: cajaId,
+        usuario_id: usuario?.id ?? null,
+        usuario: usuario?.nombre ?? 'Cajero actual',
+        saldo_inicial: caja.saldoBase,
+        ingresos: 0,
+        egresos: 0,
+        ventas: 0,
+        saldo_final: caja.saldoBase,
+        estado: 'abierta',
+      };
+      const { data: row, error: err } = await supabase
+        .from('sesiones_caja')
+        .insert(insertRow)
+        .select()
+        .single();
+      if (err) {
+        setError(err.message);
+        return null;
+      }
       const nueva: SesionCaja = {
-        id: `ses-${Date.now()}`,
+        id: (row as SesionRow).id,
         cajaId,
         caja,
-        usuarioId: usuario?.id ?? 'usr-1',
+        usuarioId: usuario?.id ?? '',
         usuario: usuario?.nombre ?? 'Cajero actual',
-        fechaApertura: new Date().toISOString(),
+        fechaApertura: (row as SesionRow).fecha_apertura,
         saldoInicial: caja.saldoBase,
         ingresos: 0,
         egresos: 0,
@@ -125,14 +225,32 @@ export function CashSessionProvider({ children }: { children: ReactNode }) {
       setSesiones((prev) => [nueva, ...prev]);
       return nueva;
     },
-    [sesiones]
+    [cajas, sesiones]
   );
 
   const cerrarSesion = useCallback(
-    (
+    async (
       sesionId: string,
       opciones?: { saldoFinal?: number; observaciones?: string }
-    ) => {
+    ): Promise<void> => {
+      const sesion = sesiones.find((s) => s.id === sesionId);
+      if (!sesion) return;
+      const saldoFinal =
+        opciones?.saldoFinal ??
+        sesion.saldoInicial + sesion.ingresos + sesion.ventas - sesion.egresos;
+      const { error: err } = await supabase
+        .from('sesiones_caja')
+        .update({
+          estado: 'cerrada',
+          fecha_cierre: new Date().toISOString(),
+          saldo_final: saldoFinal,
+          observaciones: opciones?.observaciones || null,
+        })
+        .eq('id', sesionId);
+      if (err) {
+        setError(err.message);
+        return;
+      }
       setSesiones((prev) =>
         prev.map((s) =>
           s.id === sesionId
@@ -140,74 +258,95 @@ export function CashSessionProvider({ children }: { children: ReactNode }) {
                 ...s,
                 estado: 'cerrada',
                 fechaCierre: new Date().toISOString(),
-                saldoFinal:
-                  opciones?.saldoFinal ??
-                  s.saldoInicial + s.ingresos + s.ventas - s.egresos,
+                saldoFinal,
                 observaciones: opciones?.observaciones,
               }
             : s
         )
       );
     },
-    []
+    [sesiones]
   );
 
   const agregarMovimiento = useCallback(
-    (
+    async (
       sesionId: string,
       mov: { tipo: 'ingreso' | 'egreso' | 'venta' | 'pago' | 'reembolso'; monto: number; concepto: string; medioPago?: string }
-    ) => {
+    ): Promise<void> => {
+      const sesion = sesiones.find((s) => s.id === sesionId);
+      if (!sesion) return;
+      const insertRow = {
+        sesion_id: sesionId,
+        tipo: mov.tipo,
+        monto: mov.monto,
+        concepto: mov.concepto,
+        medio_pago: mov.medioPago || null,
+        usuario: sesion.usuario,
+      };
+      const { data: row, error: err } = await supabase
+        .from('movimientos_caja')
+        .insert(insertRow)
+        .select()
+        .single();
+      if (err) {
+        setError(err.message);
+        return;
+      }
+      const nuevoMov = {
+        id: (row as MovimientoRow).id,
+        sesionId,
+        tipo: mov.tipo,
+        monto: mov.monto,
+        concepto: mov.concepto,
+        medioPago: (mov.medioPago as SesionCaja['movimientos'][number]['medioPago']) || undefined,
+        usuario: sesion.usuario,
+        fecha: (row as MovimientoRow).fecha,
+      };
+      const ingresos = sesion.ingresos + (mov.tipo === 'ingreso' ? mov.monto : 0);
+      const egresos = sesion.egresos + (mov.tipo === 'egreso' || mov.tipo === 'reembolso' ? mov.monto : 0);
+      const ventas = sesion.ventas + (mov.tipo === 'venta' || mov.tipo === 'pago' ? mov.monto : 0);
+      const saldoFinal = sesion.saldoInicial + ingresos + ventas - egresos;
+      await supabase
+        .from('sesiones_caja')
+        .update({ ingresos, egresos, ventas, saldo_final: saldoFinal })
+        .eq('id', sesionId);
       setSesiones((prev) =>
-        prev.map((s) => {
-          if (s.id !== sesionId) return s;
-          const nuevoMov = {
-            id: `mc-${Date.now()}`,
-            sesionId: s.id,
-            tipo: mov.tipo,
-            monto: mov.monto,
-            concepto: mov.concepto,
-            medioPago: mov.medioPago as any,
-            usuario: s.usuario,
-            fecha: new Date().toISOString(),
-          };
-          const ingresos = s.ingresos + (mov.tipo === 'ingreso' ? mov.monto : 0);
-          const egresos = s.egresos + (mov.tipo === 'egreso' || mov.tipo === 'reembolso' ? mov.monto : 0);
-          const ventas = s.ventas + (mov.tipo === 'venta' || mov.tipo === 'pago' ? mov.monto : 0);
-          return {
-            ...s,
-            ingresos,
-            egresos,
-            ventas,
-            saldoFinal: s.saldoInicial + ingresos + ventas - egresos,
-            movimientos: [nuevoMov, ...s.movimientos],
-          };
-        })
+        prev.map((s) =>
+          s.id === sesionId
+            ? { ...s, ingresos, egresos, ventas, saldoFinal, movimientos: [nuevoMov, ...s.movimientos] }
+            : s
+        )
       );
     },
-    []
+    [sesiones]
   );
 
-  const registrarVenta = useCallback((sesionId: string, monto: number) => {
-    setSesiones((prev) =>
-      prev.map((s) => {
-        if (s.id !== sesionId) return s;
-        const nuevasVentas = s.ventas + monto;
-        return {
-          ...s,
-          ventas: nuevasVentas,
-          saldoFinal: s.saldoInicial + s.ingresos + nuevasVentas - s.egresos,
-        };
-      })
-    );
-  }, []);
-
-  const refrescar = useCallback(() => {
-    setSesiones(loadInitial());
-  }, []);
+  const registrarVenta = useCallback(
+    async (sesionId: string, monto: number): Promise<void> => {
+      const sesion = sesiones.find((s) => s.id === sesionId);
+      if (!sesion) return;
+      const nuevasVentas = sesion.ventas + monto;
+      const saldoFinal = sesion.saldoInicial + sesion.ingresos + nuevasVentas - sesion.egresos;
+      const { error: err } = await supabase
+        .from('sesiones_caja')
+        .update({ ventas: nuevasVentas, saldo_final: saldoFinal })
+        .eq('id', sesionId);
+      if (err) {
+        setError(err.message);
+        return;
+      }
+      setSesiones((prev) =>
+        prev.map((s) =>
+          s.id === sesionId ? { ...s, ventas: nuevasVentas, saldoFinal } : s
+        )
+      );
+    },
+    [sesiones]
+  );
 
   const value = useMemo<CashSessionContextValue>(
     () => ({
-      cajas: mockCajas,
+      cajas,
       sesiones,
       sesionAbierta,
       sesionAnteriorAbierta,
@@ -218,8 +357,11 @@ export function CashSessionProvider({ children }: { children: ReactNode }) {
       refrescar,
       hoy: () => new Date().toISOString().split('T')[0],
       isYesterday,
+      loading,
+      error,
     }),
     [
+      cajas,
       sesiones,
       sesionAbierta,
       sesionAnteriorAbierta,
@@ -228,6 +370,8 @@ export function CashSessionProvider({ children }: { children: ReactNode }) {
       agregarMovimiento,
       registrarVenta,
       refrescar,
+      loading,
+      error,
     ]
   );
 

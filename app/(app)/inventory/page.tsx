@@ -50,7 +50,11 @@ import {
 } from '@/components/ui/sheet';
 import { KpiCard } from '@/components/kpi-card';
 import { EmptyState } from '@/components/empty-state';
-import { mockInventario, mockMovimientosInventario, mockProductos } from '@/lib/mock-data';
+import {
+  useInventario,
+  useMovimientosInventario,
+  useProductos,
+} from '@/hooks/use-supabase-data';
 import { TIPO_MOVIMIENTO_INVENTARIO_META } from '@/lib/constants';
 import { formatCOP, formatDateTime } from '@/lib/format';
 import type { TipoMovimientoInventario, Producto } from '@/lib/types';
@@ -65,13 +69,17 @@ export default function InventoryPage() {
   const [movCantidad, setMovCantidad] = useState<number>(1);
   const [movMotivo, setMovMotivo] = useState('');
 
-  const filtered = mockInventario.filter(
+  const { data: productos } = useProductos();
+  const { data: inventario, loading: invLoading, error: invError } = useInventario(productos);
+  const { data: movimientos, loading: movLoading } = useMovimientosInventario(productos);
+
+  const filtered = inventario.filter(
     (i) =>
       i.producto.nombre.toLowerCase().includes(search.toLowerCase()) ||
       i.producto.codigo.toLowerCase().includes(search.toLowerCase())
   );
 
-  const movsFiltrados = mockMovimientosInventario.filter((m) => {
+  const movsFiltrados = movimientos.filter((m) => {
     if (movFilter !== 'all' && m.tipo !== movFilter) return false;
     if (movSearch) {
       const q = movSearch.toLowerCase();
@@ -84,10 +92,10 @@ export default function InventoryPage() {
     return true;
   });
 
-  const totalValorizado = mockInventario.reduce((s, i) => s + i.valorizado, 0);
-  const lowStock = mockInventario.filter((i) => i.stockActual <= i.stockMinimo);
+  const totalValorizado = inventario.reduce((s, i) => s + i.valorizado, 0);
+  const lowStock = inventario.filter((i) => i.stockActual <= i.stockMinimo);
 
-  function registrarMovimiento() {
+  async function registrarMovimiento() {
     if (!movProducto) {
       toast.error('Selecciona un producto.');
       return;
@@ -130,10 +138,10 @@ export default function InventoryPage() {
       )}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Productos en stock" value={mockInventario.length.toString()} icon={Boxes} tone="primary" />
+        <KpiCard label="Productos en stock" value={inventario.length.toString()} icon={Boxes} tone="primary" />
         <KpiCard label="Valorizado total" value={formatCOP(totalValorizado)} icon={Package} tone="success" />
         <KpiCard label="Stock bajo" value={lowStock.length.toString()} icon={AlertTriangle} tone="warning" />
-        <KpiCard label="Movimientos (30 días)" value={mockMovimientosInventario.length.toString()} icon={TrendingUp} tone="info" />
+        <KpiCard label="Movimientos (30 días)" value={movimientos.length.toString()} icon={TrendingUp} tone="info" />
       </div>
 
       <Tabs defaultValue="stock">
@@ -155,7 +163,15 @@ export default function InventoryPage() {
             </div>
           </Card>
 
-          {filtered.length === 0 ? (
+          {invLoading ? (
+            <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">
+              Cargando inventario…
+            </div>
+          ) : invError ? (
+            <div className="flex items-center justify-center py-20 text-sm text-destructive">
+              Error: {invError}
+            </div>
+          ) : filtered.length === 0 ? (
             <EmptyState icon={Boxes} title="Sin productos en inventario" description="Agrega productos con stock para verlos aquí." />
           ) : (
             <Card className="overflow-hidden">
@@ -230,7 +246,11 @@ export default function InventoryPage() {
             </div>
           </Card>
 
-          {movsFiltrados.length === 0 ? (
+          {movLoading ? (
+            <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">
+              Cargando movimientos…
+            </div>
+          ) : movsFiltrados.length === 0 ? (
             <EmptyState icon={TrendingDown} title="Sin movimientos" description="Registra entradas, salidas o ajustes de inventario." />
           ) : (
             <Card className="overflow-hidden">
@@ -314,7 +334,7 @@ export default function InventoryPage() {
               <Select value={movProducto} onValueChange={setMovProducto}>
                 <SelectTrigger><SelectValue placeholder="Selecciona producto…" /></SelectTrigger>
                 <SelectContent>
-                  {mockProductos.filter((p) => p.tipoItem === 'bien').map((p: Producto) => (
+                  {productos.filter((p) => p.tipoItem === 'bien').map((p: Producto) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.codigo} · {p.nombre}
                     </SelectItem>

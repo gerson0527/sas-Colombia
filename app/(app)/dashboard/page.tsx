@@ -37,7 +37,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { EstadoDianBadge } from '@/components/estado-badge';
-import { mockDashboard, mockEmpresa, mockResoluciones } from '@/lib/mock-data';
+import { useDocumentos, useClientes, useResoluciones } from '@/hooks/use-supabase-data';
 import { formatCOP, formatShortDate } from '@/lib/format';
 import { ESTADO_DIAN_META, TIPO_DOCUMENTO_META } from '@/lib/constants';
 import { daysUntil } from '@/lib/format';
@@ -52,16 +52,47 @@ const PIE_COLORS = [
 ];
 
 export default function DashboardPage() {
-  const d = mockDashboard;
-  const pieData = d.distribucionEstados.map((s) => ({
+  const { data: documentos } = useDocumentos();
+  const { data: clientes } = useClientes();
+  const { data: resoluciones } = useResoluciones();
+
+  const clienteMap = new Map(clientes.map((c) => [c.id, c]));
+  const facturas = documentos.filter((d) => d.tipoDocumento === 'factura_venta');
+  const facturasMes = facturas.length;
+  const pendientesEnvio = documentos.filter((d) => d.estadoDian === 'pendiente_envio').length;
+  const rechazadas = documentos.filter((d) => d.estadoDian === 'rechazado').length;
+  const ingresosTotales = facturas.reduce((s, d) => s + d.total, 0);
+
+  const distribucionEstados = Object.keys(ESTADO_DIAN_META).map((estado) => ({
+    estado: estado as keyof typeof ESTADO_DIAN_META,
+    cantidad: documentos.filter((d) => d.estadoDian === estado).length,
+  })).filter((s) => s.cantidad > 0);
+
+  const pieData = distribucionEstados.map((s) => ({
     name: ESTADO_DIAN_META[s.estado].label,
     value: s.cantidad,
   }));
 
-  const certDays = daysUntil(mockEmpresa.fechaVencimientoCertificado);
-  const resolucion = mockResoluciones[0];
-  const resolucionUsage =
-    (resolucion.consecutivoActual / resolucion.rangoHasta) * 100;
+  const ultimosDocumentos = documentos.slice(0, 5);
+
+  const ventasPorMes = (() => {
+    const meses: Record<string, number> = {};
+    facturas.forEach((f) => {
+      const d = new Date(f.fechaEmision);
+      const key = d.toLocaleDateString('es-CO', { month: 'short' });
+      meses[key] = (meses[key] ?? 0) + f.total;
+    });
+    return Object.entries(meses)
+      .slice(-6)
+      .map(([mes, total]) => ({ mes, total }));
+  })();
+
+  const resolucion = resoluciones[0];
+  const resolucionUsage = resolucion
+    ? (resolucion.consecutivoActual / resolucion.rangoHasta) * 100
+    : 0;
+  const resolucionPorAgotar = resolucion ? resolucionUsage > 80 : false;
+  const certDays: number | null = null;
 
   return (
     <div className="space-y-6">
@@ -78,9 +109,9 @@ export default function DashboardPage() {
       />
 
       {/* Alerts */}
-      {(d.resolucionPorAgotar || (certDays !== null && certDays < 60)) && (
+      {(resolucionPorAgotar || (certDays !== null && certDays < 60)) && (
         <div className="grid gap-3 md:grid-cols-2">
-          {d.resolucionPorAgotar && (
+          {resolucionPorAgotar && (
             <AlertCard
               tone="warning"
               icon={ShieldAlert}
@@ -115,28 +146,28 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           label="Facturas emitidas (mes)"
-          value={d.facturasMes.toString()}
+          value={facturasMes.toString()}
           delta={{ value: '12%', positive: true }}
           icon={FileText}
           tone="primary"
         />
         <KpiCard
           label="Pendientes envío DIAN"
-          value={d.pendientesEnvio.toString()}
+          value={pendientesEnvio.toString()}
           icon={Send}
           tone="warning"
           hint="Requieren atención"
         />
         <KpiCard
           label="Rechazadas"
-          value={d.rechazadas.toString()}
+          value={rechazadas.toString()}
           delta={{ value: '2', positive: false }}
           icon={AlertOctagon}
           tone="destructive"
         />
         <KpiCard
           label="Ingresos totales (mes)"
-          value={formatCOP(d.ingresosTotales)}
+          value={formatCOP(ingresosTotales)}
           delta={{ value: '17%', positive: true }}
           icon={DollarSign}
           tone="success"
@@ -153,7 +184,7 @@ export default function DashboardPage() {
           <CardContent>
             <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={d.ventasPorMes} margin={{ left: 8, right: 8, top: 8, bottom: 0 }}>
+                <AreaChart data={ventasPorMes} margin={{ left: 8, right: 8, top: 8, bottom: 0 }}>
                   <defs>
                     <linearGradient id="ventas" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.35} />
@@ -266,7 +297,7 @@ export default function DashboardPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {d.ultimosDocumentos.map((doc) => (
+              {ultimosDocumentos.map((doc) => (
                 <TableRow key={doc.id}>
                   <TableCell className="font-mono text-xs font-medium">
                     {doc.numero}
@@ -275,7 +306,7 @@ export default function DashboardPage() {
                     {TIPO_DOCUMENTO_META[doc.tipoDocumento].label}
                   </TableCell>
                   <TableCell className="text-sm">
-                    {doc.cliente.razonSocial}
+                    {clienteMap.get(doc.clienteId)?.razonSocial ?? '—'}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {formatShortDate(doc.fechaEmision)}

@@ -54,8 +54,8 @@ import {
 import { EstadoDianBadge } from '@/components/estado-badge';
 import { usePermissions } from '@/hooks/use-permissions';
 import { useCashSession } from '@/hooks/use-cash-session';
+import { useProductos, useClientes } from '@/hooks/use-supabase-data';
 import { useRouter } from 'next/navigation';
-import { mockProductos, mockClientes } from '@/lib/mock-data';
 import { MEDIO_PAGO_META, FORMA_PAGO_META, CATEGORIA_PRODUCTO_FACTURACION_META } from '@/lib/constants';
 import { formatCOP } from '@/lib/format';
 import type { CartItem, MedioPago, FormaPago, EstadoDian, Producto, Cliente } from '@/lib/types';
@@ -90,6 +90,8 @@ export default function POSPage() {
   const { can, limiteDescuento, sesion } = usePermissions();
   const { sesionAbierta, sesionAnteriorAbierta, isYesterday } = useCashSession();
   const router = useRouter();
+  const { data: productos } = useProductos();
+  const { data: clientes } = useClientes();
   const [search, setSearch] = useState('');
   const [categoria, setCategoria] = useState('all');
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -148,7 +150,7 @@ export default function POSPage() {
   }, []);
 
   const productosFiltrados = useMemo(() => {
-    let list = mockProductos.filter((p) => p.activo !== false);
+    let list = productos.filter((p) => p.activo !== false);
     if (categoria !== 'all') {
       if (categoria === 'bienes') list = list.filter((p) => p.tipoItem === 'bien');
       else if (categoria === 'servicios') list = list.filter((p) => p.tipoItem === 'servicio');
@@ -161,14 +163,14 @@ export default function POSPage() {
       );
     }
     return list;
-  }, [categoria, search]);
+  }, [productos, categoria, search]);
 
   // Enter en buscador con match exacto = agregar al carrito
   const onSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       const q = search.trim().toLowerCase();
       if (!q) return;
-      const exact = mockProductos.find(
+      const exact = productos.find(
         (p) => p.codigo.toLowerCase() === q || p.codigo.toLowerCase() === q.replace(/\s/g, '')
       );
       if (exact) {
@@ -595,7 +597,7 @@ export default function POSPage() {
             </Button>
             <Separator />
             <div className="max-h-60 space-y-1 overflow-y-auto scrollbar-thin">
-              {mockClientes.map((c) => (
+              {clientes.map((c) => (
                 <button
                   key={c.id}
                   onClick={() => {

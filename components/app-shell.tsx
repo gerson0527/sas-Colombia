@@ -22,7 +22,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
 import { SidebarNav } from '@/components/sidebar-nav';
-import { mockEmpresa } from '@/lib/mock-data';
+import { useEmpresa, useDocumentos } from '@/hooks/use-supabase-data';
 import { AMBIENTE_META, ROL_META } from '@/lib/constants';
 import { usePermissions } from '@/hooks/use-permissions';
 import {
@@ -41,8 +41,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const themeContext = useTheme();
   const theme = themeContext.theme;
   const { sesion, rol, switchRole, can } = usePermissions();
-  const ambiente = mockEmpresa.ambiente;
+  const { data: empresa } = useEmpresa();
+  const { data: documentos } = useDocumentos();
+  const ambiente = empresa?.ambiente ?? 'habilitacion';
   const isHab = ambiente === 'habilitacion';
+  const rejectedCount = documentos.filter((d) => d.estadoDian === 'rechazado').length;
 
   const pageTitle = getPageTitle(pathname);
   const initials = sesion.usuario.nombre
@@ -51,7 +54,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     .map((n) => n[0])
     .join('');
   const firstName = sesion.usuario.nombre.split(' ')[0];
-  const rejectedCount = 2;
 
   return (
     <div className="min-h-screen bg-background">
@@ -100,7 +102,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
             <div className="hidden items-center gap-2 lg:flex">
               <h2 className="text-sm font-medium text-muted-foreground">
-                {mockEmpresa.razonSocial}
+                {empresa?.razonSocial || '—'}
               </h2>
               <span
                 className={cn(

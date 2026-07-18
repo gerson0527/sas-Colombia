@@ -33,7 +33,7 @@ import {
 } from '@/components/ui/table';
 import { EstadoDianBadge } from '@/components/estado-badge';
 import { EmptyState } from '@/components/empty-state';
-import { mockDocumentos } from '@/lib/mock-data';
+import { useDocumentos, useClientes } from '@/hooks/use-supabase-data';
 import { formatCOP, formatShortDate } from '@/lib/format';
 import {
   ESTADO_DIAN_META,
@@ -56,23 +56,34 @@ export default function DocumentsPage() {
   const [estado, setEstado] = useState<EstadoDian | 'all'>('all');
   const [tipo, setTipo] = useState<TipoDocumento | 'all'>('all');
   const [page, setPage] = useState(1);
+  const { data: documentos, loading, error } = useDocumentos();
+  const { data: clientes } = useClientes();
+
+  const clienteMap = useMemo(() => {
+    const m = new Map<string, { razonSocial: string; identificacion: string; dv?: string }>();
+    clientes.forEach((c) =>
+      m.set(c.id, { razonSocial: c.razonSocial, identificacion: c.identificacion, dv: c.dv })
+    );
+    return m;
+  }, [clientes]);
 
   const filtered = useMemo(() => {
-    return mockDocumentos.filter((doc) => {
+    return documentos.filter((doc) => {
       if (estado !== 'all' && doc.estadoDian !== estado) return false;
       if (tipo !== 'all' && doc.tipoDocumento !== tipo) return false;
       if (search) {
         const q = search.toLowerCase();
+        const cli = clienteMap.get(doc.clienteId);
         if (
           !doc.numero.toLowerCase().includes(q) &&
-          !doc.cliente.razonSocial.toLowerCase().includes(q) &&
-          !doc.cliente.identificacion.includes(q)
+          !(cli?.razonSocial.toLowerCase().includes(q) ?? false) &&
+          !(cli?.identificacion.includes(q) ?? false)
         )
           return false;
       }
       return true;
     });
-  }, [search, estado, tipo]);
+  }, [documentos, clienteMap, search, estado, tipo]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const current = Math.min(page, totalPages);
@@ -152,7 +163,15 @@ export default function DocumentsPage() {
       </Card>
 
       {/* Table */}
-      {pageItems.length === 0 ? (
+      {loading ? (
+        <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">
+          Cargando documentos…
+        </div>
+      ) : error ? (
+        <div className="flex items-center justify-center py-20 text-sm text-destructive">
+          Error: {error}
+        </div>
+      ) : pageItems.length === 0 ? (
         <EmptyState
           icon={FileText}
           title="No se encontraron documentos"
@@ -190,11 +209,14 @@ export default function DocumentsPage() {
                     {TIPO_DOCUMENTO_META[doc.tipoDocumento].label}
                   </TableCell>
                   <TableCell className="max-w-[220px] truncate text-sm">
-                    {doc.cliente.razonSocial}
+                    {clienteMap.get(doc.clienteId)?.razonSocial ?? '—'}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {doc.cliente.identificacion}
-                    {doc.cliente.dv ? `-${doc.cliente.dv}` : ''}
+                    {(() => {
+                      const cli = clienteMap.get(doc.clienteId);
+                      if (!cli) return '—';
+                      return `${cli.identificacion}${cli.dv ? `-${cli.dv}` : ''}`;
+                    })()}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {formatShortDate(doc.fechaEmision)}

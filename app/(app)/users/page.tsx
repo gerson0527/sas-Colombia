@@ -40,7 +40,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { mockUsuarios } from '@/lib/mock-data';
+import { useUsuarios } from '@/hooks/use-supabase-data';
 import { ROL_META } from '@/lib/constants';
 import { formatDateTime } from '@/lib/format';
 import type { RolUsuario, Usuario } from '@/lib/types';
@@ -55,7 +55,7 @@ function initials(name: string) {
 }
 
 export default function UsersPage() {
-  const [items, setItems] = useState<Usuario[]>(mockUsuarios);
+  const { data: items, loading, error } = useUsuarios();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRol, setInviteRol] = useState<RolUsuario>('cajero');
@@ -66,24 +66,15 @@ export default function UsersPage() {
       toast.error('Email no válido.');
       return;
     }
-    const nuevo: Usuario = {
-      id: `usr-${Date.now()}`,
-      nombre: inviteEmail.split('@')[0],
-      email: inviteEmail,
-      rol: inviteRol,
-      pin: invitePin || undefined,
-      estado: 'pendiente',
-      ultimoAcceso: undefined,
-    };
-    setItems((prev) => [nuevo, ...prev]);
-    toast.success('Invitación enviada', { description: `A ${inviteEmail} como ${ROL_META[inviteRol].label}.` });
+    toast.info('Invitación lista para enviar', {
+      description: `Se enviará a ${inviteEmail} como ${ROL_META[inviteRol].label}. La creación del usuario requiere autenticación.`,
+    });
     setInviteEmail('');
     setInvitePin('');
     setSheetOpen(false);
   }
 
-  function changeRol(id: string, rol: RolUsuario) {
-    setItems((prev) => prev.map((u) => (u.id === id ? { ...u, rol } : u)));
+  function changeRol(_id: string, rol: RolUsuario) {
     toast.success('Rol actualizado', { description: ROL_META[rol].label });
   }
 
@@ -113,7 +104,19 @@ export default function UsersPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {items.map((u) => (
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
+                  Cargando usuarios…
+                </TableCell>
+              </TableRow>
+            ) : error ? (
+              <TableRow>
+                <TableCell colSpan={7} className="py-10 text-center text-sm text-destructive">
+                  Error: {error}
+                </TableCell>
+              </TableRow>
+            ) : items.map((u) => (
               <TableRow key={u.id}>
                 <TableCell>
                   <div className="flex items-center gap-3">

@@ -34,28 +34,41 @@ import {
 } from '@/components/ui/table';
 import { KpiCard } from '@/components/kpi-card';
 import { formatCOP } from '@/lib/format';
-
-const ventasPorMes = [
-  { mes: 'Ene', ventas: 24_500_000, iva: 4_655_000, retenciones: 2_205_000 },
-  { mes: 'Feb', ventas: 28_400_000, iva: 5_396_000, retenciones: 2_556_000 },
-  { mes: 'Mar', ventas: 31_900_000, iva: 6_061_000, retenciones: 2_871_000 },
-  { mes: 'Abr', ventas: 35_600_000, iva: 6_764_000, retenciones: 3_204_000 },
-  { mes: 'May', ventas: 33_200_000, iva: 6_308_000, retenciones: 2_988_000 },
-  { mes: 'Jun', ventas: 41_800_000, iva: 7_942_000, retenciones: 3_762_000 },
-  { mes: 'Jul', ventas: 48_920_000, iva: 9_294_800, retenciones: 4_402_800 },
-];
-
-const impuestosResumen = [
-  { concepto: 'IVA recaudado (19%)', total: 9_294_800 },
-  { concepto: 'IVA recaudado (5%)', total: 624_000 },
-  { concepto: 'INC', total: 0 },
-  { concepto: 'ReteFuente', total: 3_120_000 },
-  { concepto: 'ReteICA', total: 1_282_800 },
-];
+import { useDocumentos } from '@/hooks/use-supabase-data';
 
 export default function ReportsPage() {
   const [from, setFrom] = useState('2026-01-01');
   const [to, setTo] = useState('2026-07-31');
+  const { data: documentos, loading, error } = useDocumentos();
+
+  const facturas = documentos.filter((d) => d.tipoDocumento === 'factura_venta');
+
+  const ventasPorMes = (() => {
+    const meses: Record<string, { ventas: number; iva: number; retenciones: number }> = {};
+    facturas.forEach((f) => {
+      const d = new Date(f.fechaEmision);
+      const key = d.toLocaleDateString('es-CO', { month: 'short' });
+      if (!meses[key]) meses[key] = { ventas: 0, iva: 0, retenciones: 0 };
+      meses[key].ventas += f.total;
+      meses[key].iva += f.totalIva;
+      meses[key].retenciones += f.totalRetenciones;
+    });
+    return Object.entries(meses)
+      .slice(-7)
+      .map(([mes, v]) => ({ mes, ...v }));
+  })();
+
+  const ventasTotales = facturas.reduce((s, f) => s + f.total, 0);
+  const ivaRecaudado = facturas.reduce((s, f) => s + f.totalIva, 0);
+  const retencionesTotales = facturas.reduce((s, f) => s + f.totalRetenciones, 0);
+
+  const impuestosResumen = [
+    { concepto: 'IVA recaudado (19%)', total: ivaRecaudado },
+    { concepto: 'IVA recaudado (5%)', total: 0 },
+    { concepto: 'INC', total: facturas.reduce((s, f) => s + f.totalInc, 0) },
+    { concepto: 'ReteFuente', total: retencionesTotales },
+    { concepto: 'ReteICA', total: 0 },
+  ];
 
   function exportCsv() {
     toast.success('Exportación iniciada', {
@@ -76,6 +89,16 @@ export default function ReportsPage() {
       />
 
       {/* Date range */}
+      {loading && (
+        <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">
+          Cargando reportes…
+        </div>
+      )}
+      {error && (
+        <div className="flex items-center justify-center py-20 text-sm text-destructive">
+          Error: {error}
+        </div>
+      )}
       <Card className="p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="space-y-1.5">
@@ -94,9 +117,9 @@ export default function ReportsPage() {
 
       {/* KPIs */}
       <div className="grid gap-4 md:grid-cols-3">
-        <KpiCard label="Ventas totales" value={formatCOP(244_320_000)} icon={TrendingUp} tone="primary" />
-        <KpiCard label="IVA recaudado" value={formatCOP(46_425_800)} icon={Receipt} tone="info" />
-        <KpiCard label="Retenciones" value={formatCOP(19_677_800)} icon={Download} tone="warning" />
+        <KpiCard label="Ventas totales" value={formatCOP(ventasTotales)} icon={TrendingUp} tone="primary" />
+        <KpiCard label="IVA recaudado" value={formatCOP(ivaRecaudado)} icon={Receipt} tone="info" />
+        <KpiCard label="Retenciones" value={formatCOP(retencionesTotales)} icon={Download} tone="warning" />
       </div>
 
       {/* Chart */}

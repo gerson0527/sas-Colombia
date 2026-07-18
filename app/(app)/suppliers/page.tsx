@@ -55,7 +55,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { EmptyState } from '@/components/empty-state';
-import { mockProveedores } from '@/lib/mock-data';
+import { useProveedores } from '@/hooks/use-supabase-data';
 import {
   TIPO_IDENTIFICACION_META,
   REGIMEN_META,
@@ -106,7 +106,7 @@ const empty: Omit<Proveedor, 'id' | 'createdAt'> = {
 
 export default function SuppliersPage() {
   const [search, setSearch] = useState('');
-  const [items, setItems] = useState<Proveedor[]>(mockProveedores);
+  const { data: items, loading, error, create, update, remove } = useProveedores();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<Proveedor | null>(null);
   const [form, setForm] = useState(empty);
@@ -143,7 +143,7 @@ export default function SuppliersPage() {
     }));
   }
 
-  function save() {
+  async function save() {
     if (!form.razonSocial || !form.identificacion || !form.email) {
       toast.error('Completa razón social, identificación y email.');
       return;
@@ -153,23 +153,21 @@ export default function SuppliersPage() {
       return;
     }
     if (editing) {
-      setItems((prev) => prev.map((p) => (p.id === editing.id ? { ...p, ...form } : p)));
-      toast.success('Proveedor actualizado');
+      const ok = await update(editing.id, form);
+      if (ok) toast.success('Proveedor actualizado');
+      else toast.error('No se pudo actualizar el proveedor.');
     } else {
-      const nuevo: Proveedor = {
-        ...form,
-        id: `prov-${Date.now()}`,
-        createdAt: new Date().toISOString(),
-      };
-      setItems((prev) => [nuevo, ...prev]);
-      toast.success('Proveedor creado');
+      const created = await create(form);
+      if (created) toast.success('Proveedor creado');
+      else toast.error('No se pudo crear el proveedor.');
     }
     setSheetOpen(false);
   }
 
-  function remove(id: string) {
-    setItems((prev) => prev.filter((p) => p.id !== id));
-    toast.success('Proveedor eliminado');
+  async function removeSupplier(id: string) {
+    const ok = await remove(id);
+    if (ok) toast.success('Proveedor eliminado');
+    else toast.error('No se pudo eliminar el proveedor.');
   }
 
   return (
@@ -196,7 +194,15 @@ export default function SuppliersPage() {
         </div>
       </Card>
 
-      {filtered.length === 0 ? (
+      {loading ? (
+        <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">
+          Cargando proveedores…
+        </div>
+      ) : error ? (
+        <div className="flex items-center justify-center py-20 text-sm text-destructive">
+          Error: {error}
+        </div>
+      ) : filtered.length === 0 ? (
         <EmptyState
           icon={Truck}
           title="Sin proveedores"
@@ -273,7 +279,7 @@ export default function SuppliersPage() {
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => remove(p.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            <AlertDialogAction onClick={() => removeSupplier(p.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                               Eliminar
                             </AlertDialogAction>
                           </AlertDialogFooter>

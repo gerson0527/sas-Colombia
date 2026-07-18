@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -55,7 +55,7 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { mockClientes, mockProductos, mockResoluciones, mockEmpresa } from '@/lib/mock-data';
+import { useClientes, useProductos, useResoluciones, useEmpresa } from '@/hooks/use-supabase-data';
 import {
   FORMA_PAGO_META,
   MEDIO_PAGO_META,
@@ -87,19 +87,33 @@ const nextUid = () => `line-${++uidCounter}`;
 
 export default function NewInvoicePage() {
   const router = useRouter();
+  const { data: clientes } = useClientes();
+  const { data: productos } = useProductos();
+  const { data: resoluciones } = useResoluciones();
+  const { data: empresa } = useEmpresa();
   const [clienteId, setClienteId] = useState<string>('');
-  const [resolucionId, setResolucionId] = useState<string>(mockResoluciones[0].id);
+  const [resolucionId, setResolucionId] = useState<string>('');
   const [tipoDocumento, setTipoDocumento] = useState<TipoDocumento>('factura_venta');
   const [formaPago, setFormaPago] = useState<FormaPago>('contado');
   const [medioPago, setMedioPago] = useState<MedioPago>('transferencia');
-  const [ambiente, setAmbiente] = useState<Ambiente>(mockEmpresa.ambiente);
+  const [ambiente, setAmbiente] = useState<Ambiente>('habilitacion');
   const [items, setItems] = useState<LineItem[]>([]);
   const [clientSearchOpen, setClientSearchOpen] = useState(false);
   const [productSearchOpen, setProductSearchOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
 
-  const cliente = mockClientes.find((c) => c.id === clienteId);
-  const resolucion = mockResoluciones.find((r) => r.id === resolucionId);
+  useEffect(() => {
+    if (empresa?.ambiente) setAmbiente(empresa.ambiente);
+  }, [empresa]);
+  useEffect(() => {
+    if (resoluciones.length && !resolucionId) {
+      const activa = resoluciones.find((r) => r.activa);
+      setResolucionId((activa ?? resoluciones[0]).id);
+    }
+  }, [resoluciones, resolucionId]);
+
+  const cliente = clientes.find((c) => c.id === clienteId);
+  const resolucion = resoluciones.find((r) => r.id === resolucionId);
 
   const totals = useMemo(() => {
     const subtotal = items.reduce((s, i) => s + i.cantidad * i.precioUnitario - i.descuento, 0);
@@ -117,7 +131,7 @@ export default function NewInvoicePage() {
   }, [items]);
 
   function addProduct(prodId: string) {
-    const prod = mockProductos.find((p) => p.id === prodId);
+    const prod = productos.find((p) => p.id === prodId);
     if (!prod) return;
     setItems((prev) => [
       ...prev,
@@ -231,7 +245,7 @@ export default function NewInvoicePage() {
                       <CommandList>
                         <CommandEmpty>No se encontraron clientes.</CommandEmpty>
                         <CommandGroup heading="Clientes">
-                          {mockClientes.map((c) => (
+                          {clientes.map((c) => (
                             <CommandItem
                               key={c.id}
                               onSelect={() => {
@@ -295,7 +309,7 @@ export default function NewInvoicePage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {mockResoluciones.filter((r) => r.activa).map((r) => (
+                    {resoluciones.filter((r) => r.activa).map((r) => (
                       <SelectItem key={r.id} value={r.id}>
                         {r.prefijo} · {r.numeroResolucion}
                       </SelectItem>
@@ -327,7 +341,7 @@ export default function NewInvoicePage() {
                     <CommandList>
                       <CommandEmpty>No se encontraron productos.</CommandEmpty>
                       <CommandGroup heading="Productos y servicios">
-                        {mockProductos.map((p) => (
+                        {productos.map((p) => (
                           <CommandItem key={p.id} onSelect={() => addProduct(p.id)}>
                             <div className="flex w-full items-center justify-between">
                               <div className="flex flex-col">
@@ -555,8 +569,8 @@ export default function NewInvoicePage() {
           <div className="mt-4 space-y-4 text-sm">
             <div className="rounded-md border border-border p-4">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Emisor</p>
-              <p className="mt-1 font-semibold">{mockEmpresa.razonSocial}</p>
-              <p className="text-xs text-muted-foreground">NIT {mockEmpresa.nit}-{mockEmpresa.dv}</p>
+              <p className="mt-1 font-semibold">{empresa?.razonSocial || '—'}</p>
+              <p className="text-xs text-muted-foreground">NIT {empresa?.nit || '—'}-{empresa?.dv || ''}</p>
             </div>
             <div className="rounded-md border border-border p-4">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Cliente</p>

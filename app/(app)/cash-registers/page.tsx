@@ -53,14 +53,13 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { KpiCard } from '@/components/kpi-card';
 import { EmptyState } from '@/components/empty-state';
-import { mockCajas } from '@/lib/mock-data';
 import { useCashSession } from '@/hooks/use-cash-session';
 import { TIPO_MOVIMIENTO_CAJA_META, ESTADO_CAJA_META, MEDIO_PAGO_META } from '@/lib/constants';
 import { formatCOP, formatDateTime } from '@/lib/format';
 import type { Caja, SesionCaja, TipoMovimientoCaja, MedioPago } from '@/lib/types';
 
 export default function CashRegistersPage() {
-  const { cajas, sesiones, abrirSesion: abrirSesionCtx, cerrarSesion: cerrarSesionCtx, agregarMovimiento: agregarMovimientoCtx } = useCashSession();
+  const { cajas, sesiones, loading, error, abrirSesion: abrirSesionCtx, cerrarSesion: cerrarSesionCtx, agregarMovimiento: agregarMovimientoCtx } = useCashSession();
   const [cajaSheetOpen, setCajaSheetOpen] = useState(false);
   const [movSheetOpen, setMovSheetOpen] = useState(false);
   const [detailSesion, setDetailSesion] = useState<SesionCaja | null>(null);
@@ -88,14 +87,14 @@ export default function CashRegistersPage() {
     setCajaSheetOpen(false);
   }
 
-  function abrirSesion(cajaId: string) {
+  async function abrirSesion(cajaId: string) {
     const caja = cajas.find((c) => c.id === cajaId);
     if (!caja) return;
     if (sesiones.some((s) => s.cajaId === cajaId && s.estado === 'abierta')) {
       toast.error('Esta caja ya tiene una sesión abierta.');
       return;
     }
-    const nueva = abrirSesionCtx(cajaId, { id: 'usr-1', nombre: 'Diana Marcela Gómez' });
+    const nueva = await abrirSesionCtx(cajaId, { id: 'usr-1', nombre: 'Diana Marcela Gómez' });
     if (!nueva) return;
     toast.success('Sesión de caja abierta', { description: `${caja.nombre} · Saldo inicial ${formatCOP(caja.saldoBase)}` });
   }
@@ -108,12 +107,12 @@ export default function CashRegistersPage() {
     setCloseOpen(true);
   }
 
-  function confirmarCierreSesion() {
+  async function confirmarCierreSesion() {
     if (!closeSesion) return;
     const sesionId = closeSesion.id;
     const efectivoEsperado =
       closeSesion.saldoInicial + closeSesion.ingresos + closeSesion.ventas - closeSesion.egresos;
-    cerrarSesionCtx(sesionId, {
+    await cerrarSesionCtx(sesionId, {
       saldoFinal: conteoEfectivo,
       observaciones: closeObservaciones || undefined,
     });
@@ -127,7 +126,7 @@ export default function CashRegistersPage() {
     setCloseSesion(null);
   }
 
-  function registrarMovimiento() {
+  async function registrarMovimiento() {
     if (!movForm.sesionId) {
       toast.error('Selecciona la sesión de caja.');
       return;
@@ -140,7 +139,7 @@ export default function CashRegistersPage() {
       toast.error('Ingresa un concepto.');
       return;
     }
-    agregarMovimientoCtx(movForm.sesionId, {
+    await agregarMovimientoCtx(movForm.sesionId, {
       tipo: movForm.tipo,
       monto: movForm.monto,
       concepto: movForm.concepto,
@@ -176,10 +175,22 @@ export default function CashRegistersPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {loading ? (
+          <div className="col-span-full flex items-center justify-center py-20 text-sm text-muted-foreground">
+            Cargando cajas…
+          </div>
+        ) : error ? (
+          <div className="col-span-full flex items-center justify-center py-20 text-sm text-destructive">
+            Error: {error}
+          </div>
+        ) : (
+          <>
         <KpiCard label="Cajas activas" value={cajas.filter((c) => c.activa).length.toString()} icon={Store} tone="primary" />
         <KpiCard label="Sesiones abiertas" value={sesiones.filter((s) => s.estado === 'abierta').length.toString()} icon={Wallet} tone="info" />
         <KpiCard label="Ventas en cajas abiertas" value={formatCOP(totalVentasAbiertas)} icon={TrendingUp} tone="success" />
         <KpiCard label="Saldo en cajas abiertas" value={formatCOP(totalEfectivoCajas)} icon={Receipt} tone="warning" />
+          </>
+        )}
       </div>
 
       <Tabs defaultValue="registers">
