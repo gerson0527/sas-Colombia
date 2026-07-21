@@ -62,6 +62,7 @@ import {
   DEPARTAMENTOS_COL,
   FORMA_PAGO_META,
   CODIGOS_CIIU_COMUNES,
+  COLOMBIA_LOCATION_DATA,
 } from '@/lib/constants';
 import { formatDate } from '@/lib/format';
 import type { Proveedor, TipoIdentificacion, RegimenTributario, FormaPago } from '@/lib/types';
@@ -91,7 +92,7 @@ const empty: Omit<Proveedor, 'id' | 'createdAt'> = {
   telefono: '',
   direccion: '',
   ciudad: '',
-  departamento: 'Cundinamarca',
+  departamento: '',
   regimenTributario: 'responsable_iva',
   responsabilidadesFiscales: [],
   codigoCIIU: '',
@@ -135,10 +136,14 @@ export default function SuppliersPage() {
   }
 
   function onIdentChange(value: string, tipo: TipoIdentificacion) {
+    let newVal = value;
+    if (tipo !== 'PASAPORTE') {
+      newVal = newVal.replace(/\D/g, ''); // Solo números para CC, NIT, CE, TI, PPT
+    }
     setForm((f) => ({
       ...f,
-      identificacion: value,
-      dv: tipo === 'NIT' ? calcDv(value) : '',
+      identificacion: newVal,
+      dv: tipo === 'NIT' ? calcDv(newVal) : '',
       tipoIdentificacion: tipo,
     }));
   }
@@ -348,7 +353,7 @@ export default function SuppliersPage() {
               </div>
               <div className="space-y-1.5">
                 <Label>Teléfono</Label>
-                <Input value={form.telefono || ''} onChange={(e) => setForm({ ...form, telefono: e.target.value })} />
+                <Input value={form.telefono || ''} onChange={(e) => setForm({ ...form, telefono: e.target.value.replace(/\D/g, '') })} />
               </div>
             </div>
             <div className="space-y-1.5">
@@ -358,8 +363,8 @@ export default function SuppliersPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>Departamento</Label>
-                <Select value={form.departamento} onValueChange={(v) => setForm({ ...form, departamento: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <Select value={form.departamento} onValueChange={(v) => setForm({ ...form, departamento: v, ciudad: '' })}>
+                  <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                   <SelectContent>
                     {DEPARTAMENTOS_COL.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
                   </SelectContent>
@@ -367,7 +372,14 @@ export default function SuppliersPage() {
               </div>
               <div className="space-y-1.5">
                 <Label>Ciudad</Label>
-                <Input value={form.ciudad} onChange={(e) => setForm({ ...form, ciudad: e.target.value })} />
+                <Select value={form.ciudad} onValueChange={(v) => setForm({ ...form, ciudad: v })} disabled={!form.departamento}>
+                  <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                  <SelectContent>
+                    {form.departamento && COLOMBIA_LOCATION_DATA[form.departamento]?.map((c) => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">

@@ -56,19 +56,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const firstName = sesion.usuario.nombre.split(' ')[0];
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex h-screen flex-col overflow-hidden bg-background">
       {isHab && (
-        <div className="flex items-center justify-center gap-2 bg-warning/15 px-4 py-1.5 text-xs font-medium text-warning">
+        <div className="flex-none flex items-center justify-center gap-2 bg-warning/15 px-4 py-1.5 text-xs font-medium text-warning">
           <AlertTriangle className="h-3.5 w-3.5" />
           Ambiente de Habilitación (pruebas) — los documentos emitidos aquí NO tienen validez fiscal.
         </div>
       )}
 
-      <div className="flex">
+      <div className="flex flex-1 overflow-hidden">
         {/* Desktop sidebar */}
-        <aside className="sticky top-0 hidden h-screen w-64 shrink-0 border-r border-border bg-card lg:block">
+        <aside className="hidden w-64 flex-none flex-col border-r border-border bg-card lg:flex">
           <SidebarBrand />
-          <div className="h-[calc(100vh-64px)] overflow-y-auto scrollbar-thin">
+          <div className="flex-1 overflow-y-auto scrollbar-thin">
             <SidebarNav />
           </div>
         </aside>
@@ -96,7 +96,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Top bar */}
-          <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-card/80 px-4 backdrop-blur lg:px-6">
+          <header className="flex-none z-30 flex h-16 items-center gap-3 border-b border-border bg-card/80 px-4 backdrop-blur lg:px-6">
             <div className="flex items-center gap-2 lg:hidden">
               <span className="ml-8 text-sm font-semibold">{pageTitle}</span>
             </div>
@@ -215,17 +215,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     </DropdownMenuItem>
                   ))}
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link href="/login" className="text-destructive focus:text-destructive">
-                      <LogOut className="mr-2 h-4 w-4" /> Cerrar sesión
-                    </Link>
+                  <DropdownMenuItem
+                    onClick={async () => {
+                      const { createClient } = require('@/lib/supabase/client');
+                      const sup = createClient();
+                      await sup.auth.signOut();
+                      window.location.href = '/login';
+                    }}
+                    className="text-destructive focus:text-destructive cursor-pointer"
+                  >
+                    <LogOut className="mr-2 h-4 w-4" /> Cerrar sesión
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
           </header>
 
-          <main className="flex-1 px-4 py-6 lg:px-8">{children}</main>
+          <main className="flex flex-1 flex-col overflow-y-auto px-4 py-6 lg:px-8">
+            {children}
+          </main>
         </div>
       </div>
     </div>

@@ -319,6 +319,9 @@ export interface ConfiguracionEmpresa {
   cuentaContableVentas?: string;
   retenedor?: boolean;
   granContribuyente?: boolean;
+  // Notificaciones (Brevo)
+  brevoEmailSender?: string;       // correo remitente validado en Brevo
+  brevoWhatsappSender?: string;    // número WA registrado en Brevo (con código país, sin +)
 }
 
 // --- Usuario ---

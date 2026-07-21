@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { supabase } from '@/lib/supabase-client';
+import { createClient } from '@/lib/supabase/client';
+const supabase = createClient();
 import type {
   Cliente,
   Producto,
@@ -989,6 +990,7 @@ export function useInventario(productos: Producto[]): QueryState<InventarioItem>
     cantidad: number;
     motivo?: string;
     referencia?: string;
+    proveedorId?: string;
   }) => Promise<boolean>;
 } {
   const [data, setData] = useState<InventarioItem[]>([]);
@@ -1042,6 +1044,7 @@ export function useInventario(productos: Producto[]): QueryState<InventarioItem>
       cantidad: number;
       motivo?: string;
       referencia?: string;
+      proveedorId?: string;
     }): Promise<boolean> => {
       const prod = productos.find((p) => p.id === m.productoId);
       if (!prod) return false;
@@ -1057,6 +1060,7 @@ export function useInventario(productos: Producto[]): QueryState<InventarioItem>
         stock_resultante: stockResultante,
         motivo: m.motivo || null,
         referencia: m.referencia || null,
+        proveedor_id: m.proveedorId || null,
         usuario: 'Sistema',
       });
       if (err) {
@@ -1314,6 +1318,8 @@ interface EmpresaRow {
   cuenta_contable_ventas: string | null;
   retenedor: boolean | null;
   gran_contribuyente: boolean | null;
+  brevo_email_sender: string | null;
+  brevo_whatsapp_sender: string | null;
 }
 
 function mapEmpresa(r: EmpresaRow): ConfiguracionEmpresa {
@@ -1340,6 +1346,8 @@ function mapEmpresa(r: EmpresaRow): ConfiguracionEmpresa {
     cuentaContableVentas: r.cuenta_contable_ventas || undefined,
     retenedor: r.retenedor ?? false,
     granContribuyente: r.gran_contribuyente ?? false,
+    brevoEmailSender: r.brevo_email_sender || undefined,
+    brevoWhatsappSender: r.brevo_whatsapp_sender || undefined,
   };
 }
 
@@ -1398,6 +1406,8 @@ export function useEmpresa() {
     if (patch.cuentaContableVentas !== undefined) updateRow.cuenta_contable_ventas = patch.cuentaContableVentas || null;
     if (patch.retenedor !== undefined) updateRow.retenedor = patch.retenedor;
     if (patch.granContribuyente !== undefined) updateRow.gran_contribuyente = patch.granContribuyente;
+    if (patch.brevoEmailSender !== undefined) updateRow.brevo_email_sender = patch.brevoEmailSender || null;
+    if (patch.brevoWhatsappSender !== undefined) updateRow.brevo_whatsapp_sender = patch.brevoWhatsappSender || null;
 
     const { error: err } = await supabase.from('empresas').update(updateRow).eq('id', data.id);
     if (err) {

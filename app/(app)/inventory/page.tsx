@@ -54,6 +54,7 @@ import {
   useInventario,
   useMovimientosInventario,
   useProductos,
+  useProveedores,
 } from '@/hooks/use-supabase-data';
 import { TIPO_MOVIMIENTO_INVENTARIO_META } from '@/lib/constants';
 import { formatCOP, formatDateTime } from '@/lib/format';
@@ -68,15 +69,17 @@ export default function InventoryPage() {
   const [movProducto, setMovProducto] = useState<string>('');
   const [movCantidad, setMovCantidad] = useState<number>(1);
   const [movMotivo, setMovMotivo] = useState('');
+  const [movProveedor, setMovProveedor] = useState<string>('none');
 
   const { data: productos } = useProductos();
-  const { data: inventario, loading: invLoading, error: invError } = useInventario(productos);
+  const { data: proveedores } = useProveedores();
+  const { data: inventario, loading: invLoading, error: invError, registrarMovimiento: registrarMovimientoDB } = useInventario(productos);
   const { data: movimientos, loading: movLoading } = useMovimientosInventario(productos);
 
   const filtered = inventario.filter(
     (i) =>
-      i.producto.nombre.toLowerCase().includes(search.toLowerCase()) ||
-      i.producto.codigo.toLowerCase().includes(search.toLowerCase())
+      (i.producto?.nombre || '').toLowerCase().includes(search.toLowerCase()) ||
+      (i.producto?.codigo || '').toLowerCase().includes(search.toLowerCase())
   );
 
   const movsFiltrados = movimientos.filter((m) => {
@@ -84,7 +87,7 @@ export default function InventoryPage() {
     if (movSearch) {
       const q = movSearch.toLowerCase();
       return (
-        m.producto.nombre.toLowerCase().includes(q) ||
+        (m.producto?.nombre || '').toLowerCase().includes(q) ||
         m.referencia?.toLowerCase().includes(q) ||
         m.motivo?.toLowerCase().includes(q)
       );
@@ -104,13 +107,24 @@ export default function InventoryPage() {
       toast.error('La cantidad debe ser mayor a 0.');
       return;
     }
-    toast.success('Movimiento registrado', {
-      description: `${TIPO_MOVIMIENTO_INVENTARIO_META[movTipo].label} de ${movCantidad} unidades.`,
+    const ok = await registrarMovimientoDB({
+      productoId: movProducto,
+      tipo: movTipo,
+      cantidad: movCantidad,
+      motivo: movMotivo,
+      proveedorId: movProveedor !== 'none' ? movProveedor : undefined,
     });
-    setSheetOpen(false);
-    setMovProducto('');
-    setMovCantidad(1);
-    setMovMotivo('');
+    
+    if (ok) {
+      toast.success('Movimiento registrado', {
+        description: `${TIPO_MOVIMIENTO_INVENTARIO_META[movTipo].label} de ${movCantidad} unidades.`,
+      });
+      setSheetOpen(false);
+      setMovProducto('');
+      setMovCantidad(1);
+      setMovMotivo('');
+      setMovProveedor('none');
+    }
   }
 
   return (
@@ -131,7 +145,7 @@ export default function InventoryPage() {
           <div>
             <p className="text-sm font-semibold text-warning">Productos con stock bajo</p>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              {lowStock.map((i) => i.producto.nombre).join(', ')} — están en o por debajo del mínimo.
+              {lowStock.map((i) => i.producto?.nombre || 'Desconocido').join(', ')} — están en o por debajo del mínimo.
             </p>
           </div>
         </div>
@@ -193,8 +207,8 @@ export default function InventoryPage() {
                     const low = i.stockActual <= i.stockMinimo;
                     return (
                       <TableRow key={i.id}>
-                        <TableCell className="text-sm font-medium">{i.producto.nombre}</TableCell>
-                        <TableCell className="font-mono text-xs">{i.producto.codigo}</TableCell>
+                        <TableCell className="text-sm font-medium">{i.producto?.nombre || '—'}</TableCell>
+                        <TableCell className="font-mono text-xs">{i.producto?.codigo || '—'}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">{i.ubicacion || '—'}</TableCell>
                         <TableCell className="text-right font-semibold">{i.stockActual}</TableCell>
                         <TableCell className="text-right text-sm text-muted-foreground">{i.stockMinimo}</TableCell>
@@ -278,7 +292,7 @@ export default function InventoryPage() {
                             {meta.label}
                           </span>
                         </TableCell>
-                        <TableCell className="text-sm font-medium">{m.producto.nombre}</TableCell>
+                        <TableCell className="text-sm font-medium">{m.producto?.nombre || '—'}</TableCell>
                         <TableCell className={`text-right font-semibold ${m.tipo === 'salida' || m.tipo === 'ajuste' && m.cantidad < 0 ? 'text-destructive' : 'text-success'}`}>
                           {m.tipo === 'salida' || (m.tipo === 'ajuste' && m.cantidad < 0) ? '-' : '+'}{Math.abs(m.cantidad)}
                         </TableCell>
@@ -334,7 +348,7 @@ export default function InventoryPage() {
               <Select value={movProducto} onValueChange={setMovProducto}>
                 <SelectTrigger><SelectValue placeholder="Selecciona producto…" /></SelectTrigger>
                 <SelectContent>
-                  {productos.filter((p) => p.tipoItem === 'bien').map((p: Producto) => (
+                  {productos.map((p: Producto) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.codigo} · {p.nombre}
                     </SelectItem>
@@ -355,6 +369,22 @@ export default function InventoryPage() {
               <Label>Motivo</Label>
               <Input value={movMotivo} onChange={(e) => setMovMotivo(e.target.value)} placeholder="Ej: Compra a proveedor X" />
             </div>
+            {movTipo === 'entrada' && (
+              <div className="space-y-1.5">
+                <Label>Proveedor (Opcional)</Label>
+                <Select value={movProveedor} onValueChange={setMovProveedor}>
+                  <SelectTrigger><SelectValue placeholder="Selecciona proveedor…" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Ninguno</SelectItem>
+                    {proveedores.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.razonSocial || p.nombreComercial || p.identificacion}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           <SheetFooter className="mt-6">
             <SheetClose asChild><Button variant="outline">Cancelar</Button></SheetClose>

@@ -15,6 +15,7 @@ import {
   TrendingDown,
   Receipt,
   Lock,
+  Pencil,
 } from 'lucide-react';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -59,7 +60,8 @@ import { formatCOP, formatDateTime } from '@/lib/format';
 import type { Caja, SesionCaja, TipoMovimientoCaja, MedioPago } from '@/lib/types';
 
 export default function CashRegistersPage() {
-  const { cajas, sesiones, loading, error, abrirSesion: abrirSesionCtx, cerrarSesion: cerrarSesionCtx, agregarMovimiento: agregarMovimientoCtx } = useCashSession();
+  const { cajas, sesiones, loading, error, abrirSesion: abrirSesionCtx, cerrarSesion: cerrarSesionCtx, agregarMovimiento: agregarMovimientoCtx, crearCaja, editarCaja } = useCashSession();
+  const [editingCaja, setEditingCaja] = useState<Caja | null>(null);
   const [cajaSheetOpen, setCajaSheetOpen] = useState(false);
   const [movSheetOpen, setMovSheetOpen] = useState(false);
   const [detailSesion, setDetailSesion] = useState<SesionCaja | null>(null);
@@ -80,11 +82,21 @@ export default function CashRegistersPage() {
 
   const sesionAbierta = sesiones.find((s) => s.estado === 'abierta');
 
-  function addCaja() {
-    toast.info('Función disponible en próxima versión', {
-      description: 'La creación de cajas requiere integración con backend.',
-    });
+  async function addCaja() {
+    if (!cajaForm.nombre) {
+      toast.error('El nombre es obligatorio');
+      return;
+    }
+    if (editingCaja) {
+      await editarCaja(editingCaja.id, cajaForm);
+      toast.success('Caja actualizada');
+    } else {
+      await crearCaja(cajaForm);
+      toast.success('Caja creada');
+    }
     setCajaSheetOpen(false);
+    setEditingCaja(null);
+    setCajaForm({ nombre: '', sucursal: '', saldoBase: 100000 });
   }
 
   async function abrirSesion(cajaId: string) {
@@ -167,7 +179,11 @@ export default function CashRegistersPage() {
             <Button variant="outline" onClick={() => setMovSheetOpen(true)} disabled={!sesionAbierta}>
               <Plus className="mr-2 h-4 w-4" /> Movimiento
             </Button>
-            <Button onClick={() => setCajaSheetOpen(true)}>
+            <Button onClick={() => {
+              setEditingCaja(null);
+              setCajaForm({ nombre: '', sucursal: '', saldoBase: 100000 });
+              setCajaSheetOpen(true);
+            }}>
               <Store className="mr-2 h-4 w-4" /> Nueva caja
             </Button>
           </>
@@ -212,6 +228,13 @@ export default function CashRegistersPage() {
                       <div>
                         <CardTitle className="flex items-center gap-2 text-base">
                           <Store className="h-4 w-4 text-primary" /> {c.nombre}
+                          <Button variant="ghost" size="icon" className="h-6 w-6 ml-1" onClick={() => {
+                            setEditingCaja(c);
+                            setCajaForm({ nombre: c.nombre, sucursal: c.sucursal || '', saldoBase: c.saldoBase });
+                            setCajaSheetOpen(true);
+                          }}>
+                            <Pencil className="h-3 w-3 text-muted-foreground" />
+                          </Button>
                         </CardTitle>
                         <p className="mt-1 text-xs text-muted-foreground">{c.sucursal}</p>
                       </div>
@@ -316,12 +339,12 @@ export default function CashRegistersPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Nueva caja */}
+      {/* Nueva/Editar caja */}
       <Sheet open={cajaSheetOpen} onOpenChange={setCajaSheetOpen}>
         <SheetContent side="right" className="w-full sm:max-w-md">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
-              <Store className="h-4 w-4 text-primary" /> Nueva caja
+              <Store className="h-4 w-4 text-primary" /> {editingCaja ? 'Editar caja' : 'Nueva caja'}
             </SheetTitle>
           </SheetHeader>
           <div className="mt-4 space-y-4">
@@ -344,7 +367,7 @@ export default function CashRegistersPage() {
           </div>
           <SheetFooter className="mt-6">
             <SheetClose asChild><Button variant="outline">Cancelar</Button></SheetClose>
-            <Button onClick={addCaja}>Crear caja</Button>
+            <Button onClick={addCaja}>{editingCaja ? 'Guardar cambios' : 'Crear caja'}</Button>
           </SheetFooter>
         </SheetContent>
       </Sheet>

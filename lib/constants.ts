@@ -19,7 +19,7 @@ import type {
   Permiso,
 } from './types';
 
-export const USE_MOCK_DATA = true;
+export const USE_MOCK_DATA = false;
 
 export const ESTADO_DIAN_META: Record<
   EstadoDian,
@@ -199,7 +199,7 @@ export const SIDEBAR_ROUTES_BY_ROLE: Record<RolUsuario, string[]> = {
   admin: [
     '/dashboard', '/pos', '/documents',
     '/invoicing-products', '/clients', '/suppliers', '/products', '/inventory',
-    '/resolutions', '/cash-registers', '/reports', '/users', '/settings',
+    '/resolutions', '/cash-registers', '/reports', '/users', '/settings', '/settings/billing',
   ],
   supervisor: [
     '/dashboard', '/pos', '/documents',
@@ -369,14 +369,43 @@ export const UNIDADES_MEDIDA = UNIDADES_MEDIDA_DIAN.map((u) => ({ codigo: u.codi
 
 export const IVA_OPCIONES = [0, 5, 19];
 
-export const DEPARTAMENTOS_COL = [
-  'Amazonas', 'Antioquia', 'Arauca', 'Atlántico', 'Bolívar', 'Boyacá',
-  'Caldas', 'Caquetá', 'Casanare', 'Cauca', 'Cesar', 'Chocó', 'Córdoba',
-  'Cundinamarca', 'Distrito Capital', 'Guainía', 'Guaviare', 'Huila',
-  'La Guajira', 'Magdalena', 'Meta', 'Nariño', 'Norte de Santander',
-  'Putumayo', 'Quindío', 'Risaralda', 'San Andrés y Providencia',
-  'Santander', 'Sucre', 'Tolima', 'Valle del Cauca', 'Vaupés', 'Vichada',
-];
+export const COLOMBIA_LOCATION_DATA: Record<string, string[]> = {
+  'Amazonas': ['Leticia', 'Puerto Nariño'],
+  'Antioquia': ['Medellín', 'Bello', 'Itagüí', 'Envigado', 'Apartadó', 'Rionegro', 'Turbo', 'Caucasia'],
+  'Arauca': ['Arauca', 'Tame', 'Saravena', 'Arauquita'],
+  'Atlántico': ['Barranquilla', 'Soledad', 'Malambo', 'Sabanalarga'],
+  'Bolívar': ['Cartagena de Indias', 'Magangué', 'Turbaco', 'El Carmen de Bolívar'],
+  'Boyacá': ['Tunja', 'Duitama', 'Sogamoso', 'Chiquinquirá', 'Puerto Boyacá'],
+  'Caldas': ['Manizales', 'La Dorada', 'Riosucio', 'Villamaría', 'Chinchiná'],
+  'Caquetá': ['Florencia', 'San Vicente del Caguán', 'Cartagena del Chairá'],
+  'Casanare': ['Yopal', 'Aguazul', 'Villanueva', 'Paz de Ariporo'],
+  'Cauca': ['Popayán', 'Santander de Quilichao', 'El Tambo', 'Puerto Tejada'],
+  'Cesar': ['Valledupar', 'Aguachica', 'Agustín Codazzi', 'Bosconia'],
+  'Chocó': ['Quibdó', 'Istmina', 'Condoto', 'Medio San Juan'],
+  'Córdoba': ['Montería', 'Lorica', 'Tierralta', 'Cereté', 'Sahagún'],
+  'Cundinamarca': ['Bogotá', 'Soacha', 'Chía', 'Zipaquirá', 'Facatativá', 'Fusagasugá', 'Mosquera', 'Madrid'],
+  'Distrito Capital': ['Bogotá'],
+  'Guainía': ['Inírida'],
+  'Guaviare': ['San José del Guaviare'],
+  'Huila': ['Neiva', 'Pitalito', 'Garzón', 'La Plata'],
+  'La Guajira': ['Riohacha', 'Maicao', 'Uribia', 'San Juan del Cesar'],
+  'Magdalena': ['Santa Marta', 'Ciénaga', 'Zona Bananera', 'Fundación'],
+  'Meta': ['Villavicencio', 'Acacías', 'Granada', 'Puerto López'],
+  'Nariño': ['Pasto', 'Tumaco', 'Ipiales', 'Samaniego'],
+  'Norte de Santander': ['Cúcuta', 'Ocaña', 'Villa del Rosario', 'Los Patios', 'Pamplona'],
+  'Putumayo': ['Mocoa', 'Puerto Asís', 'Orito', 'Valle del Guamuez'],
+  'Quindío': ['Armenia', 'Calarcá', 'Montenegro', 'Quimbaya'],
+  'Risaralda': ['Pereira', 'Dosquebradas', 'Santa Rosa de Cabal'],
+  'San Andrés y Providencia': ['San Andrés', 'Providencia'],
+  'Santander': ['Bucaramanga', 'Floridablanca', 'Barrancabermeja', 'Girón', 'Piedecuesta'],
+  'Sucre': ['Sincelejo', 'Corozal', 'San Marcos', 'Tolú'],
+  'Tolima': ['Ibagué', 'Espinal', 'Chaparral', 'Líbano', 'Melgar'],
+  'Valle del Cauca': ['Cali', 'Buenaventura', 'Palmira', 'Tuluá', 'Yumbo', 'Cartago', 'Jamundí', 'Buga'],
+  'Vaupés': ['Mitú'],
+  'Vichada': ['Puerto Carreño', 'La Primavera'],
+};
+
+export const DEPARTAMENTOS_COL = Object.keys(COLOMBIA_LOCATION_DATA);
 
 // --- Inventario ---
 

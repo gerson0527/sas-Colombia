@@ -1,8 +1,10 @@
 'use client';
 
-import { createContext, useContext, useMemo, useState, useCallback } from 'react';
+import { createContext, useContext, useMemo, useState, useCallback, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { PERMISSION_MATRIX } from '@/lib/constants';
 import type { RolUsuario, Permiso, SesionUsuario } from '@/lib/types';
+import { getMe, mapMeToSesion } from '@/lib/auth-service';
 
 interface PermissionsContextValue {
   sesion: SesionUsuario;
@@ -15,44 +17,55 @@ interface PermissionsContextValue {
 
 const PermissionsContext = createContext<PermissionsContextValue | null>(null);
 
-const DEFAULT_SESION: SesionUsuario = {
-  usuario: {
-    id: 'usr-1',
-    nombre: 'Diana Marcela Gómez',
-    email: 'diana.gomez@innovaandina.co',
-    rol: 'admin',
-    pin: '1234',
-    estado: 'activo',
-    ultimoAcceso: '2026-07-16T13:10:00Z',
-  },
-  tenantId: 'emp-1',
-  tenantNombre: 'Innova Andina S.A.S.',
-  limiteDescuento: 10,
-};
-
 export function PermissionsProvider({ children }: { children: React.ReactNode }) {
-  const [sesion, setSesion] = useState<SesionUsuario>(DEFAULT_SESION);
+  const router = useRouter();
+  const [sesion, setSesion] = useState<SesionUsuario | null>(null);
   const [limiteDescuento, setLimiteDescuento] = useState(10);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadSession() {
+      try {
+        const me = await getMe();
+        if (!mounted) return;
+        setSesion(mapMeToSesion(me));
+      } catch {
+        // No session — redirect to login
+        if (mounted) setSesion(null);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+
+    loadSession();
+    return () => { mounted = false; };
+  }, []);
 
   const can = useCallback(
     (permiso: Permiso) => {
+      if (!sesion) return false;
       const matrix = PERMISSION_MATRIX[sesion.usuario.rol];
       return matrix?.[permiso] === true;
     },
-    [sesion.usuario.rol]
+    [sesion]
   );
 
   const switchRole = useCallback((rol: RolUsuario) => {
-    setSesion((prev) => ({
-      ...prev,
-      usuario: { ...prev.usuario, rol },
-    }));
+    setSesion((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        usuario: { ...prev.usuario, rol },
+      };
+    });
   }, []);
 
   const value = useMemo<PermissionsContextValue>(
     () => ({
-      sesion,
-      rol: sesion.usuario.rol,
+      sesion: sesion!,
+      rol: sesion?.usuario.rol || 'solo_lectura',
       can,
       switchRole,
       limiteDescuento,
@@ -60,6 +73,12 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
     }),
     [sesion, can, switchRole, limiteDescuento]
   );
+
+  if (loading) return null;
+
+  if (!sesion) {
+    return null;
+  }
 
   return <PermissionsContext.Provider value={value}>{children}</PermissionsContext.Provider>;
 }

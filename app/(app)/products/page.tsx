@@ -253,7 +253,11 @@ export default function ProductsPage() {
               </div>
               <div className="space-y-1.5">
                 <Label>Unidad de medida</Label>
-                <Select value={form.unidadMedida} onValueChange={(v) => setForm({ ...form, unidadMedida: v as typeof form.unidadMedida })}>
+                <Select value={form.unidadMedida} onValueChange={(v) => {
+                  const unidad = v as typeof form.unidadMedida;
+                  const isServicio = ['SER', 'HUR', 'DIA'].includes(unidad);
+                  setForm({ ...form, unidadMedida: unidad, tipoItem: isServicio ? 'servicio' : 'bien' });
+                }}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {UNIDADES_MEDIDA.map((u) => <SelectItem key={u.codigo} value={u.codigo}>{u.label} ({u.codigo})</SelectItem>)}

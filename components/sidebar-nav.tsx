@@ -76,6 +76,7 @@ const groups: NavGroup[] = [
     items: [
       { label: 'Reportes', href: '/reports', icon: BarChart3 },
       { label: 'Usuarios', href: '/users', icon: ShieldCheck },
+      { label: 'Facturación SaaS', href: '/settings/billing', icon: Settings },
       { label: 'Configuración', href: '/settings', icon: Settings },
     ],
   },

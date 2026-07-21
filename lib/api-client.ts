@@ -1,17 +1,4 @@
-/**
- * Cliente API centralizado.
- *
- * Lee la URL base desde NEXT_PUBLIC_API_URL y adjunta el token JWT
- * (Bearer) automáticamente. En modo mock (USE_MOCK_DATA) no realiza
- * llamadas reales y los hooks consumen los datos de lib/mock-data.
- *
- * El contrato de endpoints se define en ENDPOINTS para que sea fácil
- * de ajustar a la API real del backend (FastAPI/NestJS).
- */
-
-import { USE_MOCK_DATA } from './constants';
-
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export class ApiError extends Error {
   code: string;
@@ -24,96 +11,180 @@ export class ApiError extends Error {
   }
 }
 
-function getToken(): string | null {
-  if (typeof document === 'undefined') return null;
-  // NextAuth usa cookies httpOnly; el backend las valida. Para
-  // llamadas cliente usamos el helper /api/auth/token expuesto por
-  // la capa de rutas. En modo mock simplemente no se usa.
-  return null;
+function getCookies(): string {
+  if (typeof document === 'undefined') return '';
+  return document.cookie;
+}
+
+function parseCookies(cookieStr: string): Record<string, string> {
+  return Object.fromEntries(
+    cookieStr.split(';').map((c) => {
+      const [k, ...v] = c.trim().split('=');
+      return [k, v.join('=')];
+    })
+  );
 }
 
 export async function apiFetch<T>(
   path: string,
   init: RequestInit = {}
 ): Promise<T> {
-  if (USE_MOCK_DATA) {
-    throw new Error(
-      'apiFetch no debe usarse en modo mock. Usa los hooks de lib/mock-data.'
-    );
-  }
   const headers = new Headers(init.headers || {});
-  if (!headers.has('Content-Type')) {
+  if (!headers.has('Content-Type') && !(init.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
   }
-  const token = getToken();
-  if (token) headers.set('Authorization', `Bearer ${token}`);
 
-  const res = await fetch(`${BASE_URL}${path}`, { ...init, headers });
-  if (!res.ok) {
-    let code = 'unknown';
-    let message = `Error ${res.status}`;
-    try {
-      const body = await res.json();
-      if (body?.error?.code) code = body.error.code;
-      if (body?.error?.message) message = body.error.message;
-    } catch {
-      /* noop */
-    }
-    throw new ApiError(code, message, res.status);
+  const cookies = getCookies();
+  const parsed = parseCookies(cookies);
+
+  // Extract JWT from cookie or use Authorization header if provided
+  const accessToken = parsed['access'] || parsed['__Host-access'];
+  const refreshToken = parsed['refresh'] || parsed['__Host-refresh'];
+
+  if (accessToken && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${accessToken}`);
   }
-  if (res.status === 204) return undefined as unknown as T;
-  return (await res.json()) as T;
+
+  const doFetch = (): Promise<T> =>
+    fetch(`${BASE_URL}${path}`, {
+      ...init,
+      headers,
+      credentials: 'include',
+    }).then(async (res) => {
+      if (res.ok) {
+        if (res.status === 204) return undefined as unknown as T;
+        return (await res.json()) as T;
+      }
+      let code = 'unknown';
+      let message = `Error ${res.status}`;
+      try {
+        const body = await res.json();
+        if (body?.message) message = body.message;
+        if (body?.error) code = body.error;
+        if (body?.statusCode) code = body.statusCode.toString();
+      } catch {
+        /* noop */
+      }
+      throw new ApiError(code, message, res.status);
+    });
+
+  try {
+    return await doFetch();
+  } catch (err) {
+    // On 401, attempt refresh if we have a refresh token
+    if (err instanceof ApiError && err.status === 401 && refreshToken) {
+      try {
+        await fetch(`${BASE_URL}/v1/auth/refresh`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${refreshToken}`,
+          },
+        });
+        // Retry with new cookies
+        const newCookies = getCookies();
+        const newParsed = parseCookies(newCookies);
+        const newAccess = newParsed['access'] || newParsed['__Host-access'];
+        if (newAccess) {
+          headers.set('Authorization', `Bearer ${newAccess}`);
+        }
+        return await doFetch();
+      } catch {
+        // Refresh failed, rethrow original error
+        throw err;
+      }
+    }
+    throw err;
+  }
 }
+
+// Convenience methods
+export const api = {
+  get: <T>(path: string, init?: RequestInit) =>
+    apiFetch<T>(path, { ...init, method: 'GET' }),
+  post: <T>(path: string, body?: unknown, init?: RequestInit) =>
+    apiFetch<T>(path, {
+      ...init,
+      method: 'POST',
+      body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
+    }),
+  put: <T>(path: string, body?: unknown, init?: RequestInit) =>
+    apiFetch<T>(path, {
+      ...init,
+      method: 'PUT',
+      body: body ? JSON.stringify(body) : undefined,
+    }),
+  patch: <T>(path: string, body?: unknown, init?: RequestInit) =>
+    apiFetch<T>(path, {
+      ...init,
+      method: 'PATCH',
+      body: body ? JSON.stringify(body) : undefined,
+    }),
+  delete: <T>(path: string, init?: RequestInit) =>
+    apiFetch<T>(path, { ...init, method: 'DELETE' }),
+};
 
 export const ENDPOINTS = {
   auth: {
-    login: '/api/v1/auth/login',
-    refresh: '/api/v1/auth/refresh',
+    login: '/v1/auth/login',
+    refresh: '/v1/auth/refresh',
+    logout: '/v1/auth/logout',
+    me: '/v1/auth/me',
   },
   dashboard: {
-    summary: '/api/v1/dashboard/summary',
+    stats: '/v1/dashboard/stats',
   },
-  invoices: {
-    list: '/api/v1/invoices',
-    get: (id: string) => `/api/v1/invoices/${id}`,
-    create: '/api/v1/invoices',
-    sendDian: (id: string) => `/api/v1/invoices/${id}/send-dian`,
-    void: (id: string) => `/api/v1/invoices/${id}/void`,
-    pdf: (id: string) => `/api/v1/invoices/${id}/pdf`,
-    xml: (id: string) => `/api/v1/invoices/${id}/xml`,
-  },
-  creditNotes: {
-    list: '/api/v1/credit-notes',
-    create: '/api/v1/credit-notes',
-  },
-  debitNotes: {
-    list: '/api/v1/debit-notes',
-    create: '/api/v1/debit-notes',
-  },
-  clients: {
-    list: '/api/v1/clients',
-    create: '/api/v1/clients',
-    update: (id: string) => `/api/v1/clients/${id}`,
-    delete: (id: string) => `/api/v1/clients/${id}`,
+  customers: {
+    list: (tenantId: string) => `/v1/tenants/${tenantId}/customers`,
+    get: (tenantId: string, id: string) => `/v1/tenants/${tenantId}/customers/${id}`,
+    create: (tenantId: string) => `/v1/tenants/${tenantId}/customers`,
   },
   products: {
-    list: '/api/v1/products',
-    create: '/api/v1/products',
-    update: (id: string) => `/api/v1/products/${id}`,
-    delete: (id: string) => `/api/v1/products/${id}`,
+    list: '/v1/products',
+    create: '/v1/products',
+    get: (id: string) => `/v1/products/${id}`,
+    update: (id: string) => `/v1/products/${id}`,
   },
-  resolutions: {
-    list: '/api/v1/dian-resolutions',
-    create: '/api/v1/dian-resolutions',
+  invoices: {
+    list: '/v1/invoices',
+    create: '/v1/invoices',
+    get: (id: string) => `/v1/invoices/${id}`,
+    status: (id: string) => `/v1/invoices/${id}/status`,
+    pdf: (id: string) => `/v1/invoices/${id}/pdf`,
+    xml: (id: string) => `/v1/invoices/${id}/xml`,
+    retry: (id: string) => `/v1/invoices/${id}/retry`,
   },
-  company: {
-    get: '/api/v1/company-settings',
-    update: '/api/v1/company-settings',
-    certificate: '/api/v1/company-settings/certificate',
+  suppliers: {
+    list: '/v1/suppliers',
+    create: '/v1/suppliers',
+    get: (id: string) => `/v1/suppliers/${id}`,
+    update: (id: string) => `/v1/suppliers/${id}`,
   },
-  users: {
-    list: '/api/v1/users',
-    invite: '/api/v1/users/invite',
-    role: (id: string) => `/api/v1/users/${id}/role`,
+  inventory: {
+    movements: '/v1/inventory/movements',
+    createMovement: '/v1/inventory/movements',
+  },
+  payments: {
+    list: '/v1/payments',
+    create: '/v1/payments',
+  },
+  quotations: {
+    list: '/v1/quotations',
+    create: '/v1/quotations',
+    get: (id: string) => `/v1/quotations/${id}`,
+    updateStatus: (id: string) => `/v1/quotations/${id}/status`,
+  },
+  numberingRanges: {
+    list: (tenantId: string) => `/v1/tenants/${tenantId}/numbering-ranges`,
+    create: (tenantId: string) => `/v1/tenants/${tenantId}/numbering-ranges`,
+  },
+  tenants: {
+    create: '/v1/tenants',
+    get: (id: string) => `/v1/tenants/${id}`,
+  },
+  health: {
+    live: '/health/live',
+    ready: '/health/ready',
   },
 } as const;
