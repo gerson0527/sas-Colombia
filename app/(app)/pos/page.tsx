@@ -58,6 +58,7 @@ import { EstadoDianBadge } from '@/components/estado-badge';
 import { usePermissions } from '@/hooks/use-permissions';
 import { useCashSession } from '@/hooks/use-cash-session';
 import { useProductos, useClientes } from '@/hooks/use-supabase-data';
+import { api } from '@/lib/api-client';
 import { useRouter } from 'next/navigation';
 import { MEDIO_PAGO_META, FORMA_PAGO_META, CATEGORIA_PRODUCTO_FACTURACION_META } from '@/lib/constants';
 import { formatCOP } from '@/lib/format';
@@ -91,7 +92,7 @@ const nextCartUid = () => `cart-${++cartUid}`;
 
 export default function POSPage() {
   const { can, limiteDescuento, sesion } = usePermissions();
-  const { sesionAbierta, sesionAnteriorAbierta, isYesterday } = useCashSession();
+  const { sesionAbierta, sesionAnteriorAbierta, isYesterday } = useCashSession() as any;
   const router = useRouter();
   const { data: productosBase } = useProductos();
   const [productosExtra, setProductosExtra] = useState<Producto[]>([]);
@@ -287,26 +288,34 @@ export default function POSPage() {
     setCheckoutOpen(true);
   }
 
-  function cobrar() {
+  async function cobrar() {
     if (!sesionAbierta) {
-      toast.error('No hay una caja abierta', {
-        description: 'Debes abrir una sesión de caja antes de poder facturar.',
-      });
+      toast.error('No hay caja abierta');
       return;
     }
-    if (sesionAnteriorAbierta) {
-      toast.error('Hay una caja abierta de un día anterior', {
-        description: 'Cierra la sesión anterior en /cash-registers antes de continuar.',
-      });
-      return;
-    }
+    if (cart.length === 0) return;
+
     setProcesando(true);
-    const numero = `FE-${Math.floor(18000 + Math.random() * 9999)}`;
-    setTimeout(() => {
-      setProcesando(false);
-      setCheckoutOpen(false);
+    try {
+      const res = await api.post<{ data: { id: string; number: string } }>(
+        '/v1/pos/sales',
+        {
+          sessionId: sesionAbierta.id,
+          branchId: sesionAbierta.branchId,
+          customerId: cliente?.id,
+          paymentMethod: formaPago,
+          lines: cart.map(item => ({
+            productId: item.productoId,
+            quantity: item.cantidad,
+            unitPrice: item.precioUnitario,
+            discount: item.descuento || 0,
+          })),
+          discount: descuentoGeneral,
+          idempotencyKey: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        },
+      );
       setTicketVenta({
-        numero,
+        numero: res.data.number,
         total: totals.total,
         estadoDian: 'pendiente_envio',
         items: [...cart],
@@ -314,24 +323,14 @@ export default function POSPage() {
         efectivoRecibido: medioPago === 'efectivo' ? efectivoRecibido : undefined,
         vueltas: medioPago === 'efectivo' ? Math.max(0, efectivoRecibido - totals.total) : 0,
       });
-      // Simular polling DIAN
-      setTimeout(() => {
-        setTicketVenta((prev) =>
-          prev
-            ? {
-              ...prev,
-              estadoDian: 'aceptado',
-              cufe: 'abc73d8e1f9a04c219b7e3d6f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9',
-              qrCode: 'https://catalogo-vpfe-hab.dian.gov.co/document/qr?abc73d8e1f9a',
-            }
-            : prev
-        );
-      }, 2500);
+      toast.success(`Venta ${res.data.number} registrada`);
+      setCheckoutOpen(false);
       setCart([]);
-      setDescuentoGeneral(0);
-      setEfectivoRecibido(0);
-      setCliente(CONSUMIDOR_FINAL);
-    }, 800);
+    } catch (e: any) {
+      toast.error(`Error al cobrar: ${e.message}`);
+    } finally {
+      setProcesando(false);
+    }
   }
 
   function nuevaVenta() {
@@ -790,11 +789,13 @@ function AuthDialog({
   onOpenChange,
   onSuccess,
   motivo,
+  descuentoId,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onSuccess: () => void;
   motivo: string;
+  descuentoId?: string;
 }) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
@@ -806,13 +807,23 @@ function AuthDialog({
     }
   }, [open]);
 
-  function validar() {
-    // Mock: acepta PINs de admin (1234) o supervisor (2468)
-    if (pin === '1234' || pin === '2468') {
-      onSuccess();
-    } else {
+  async function validar() {
+    const resourceId = descuentoId || `discount-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    try {
+      const res = await api.post<{ ok: boolean }>('/v1/auth/pin/verify', {
+        pin,
+        action: 'discount_authorization',
+        resourceId,
+      });
+      if (res.ok) {
+        onSuccess();
+      } else {
+        setError(true);
+        toast.error('PIN incorrecto');
+      }
+    } catch (e: any) {
       setError(true);
-      toast.error('PIN incorrecto. Solicita autorización a un supervisor.');
+      toast.error(e.message || 'Error al verificar PIN');
     }
   }
 

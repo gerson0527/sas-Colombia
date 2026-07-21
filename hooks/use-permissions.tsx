@@ -52,14 +52,17 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
     [sesion]
   );
 
+  // DEV ONLY: role switching is disabled in production.
   const switchRole = useCallback((rol: RolUsuario) => {
-    setSesion((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        usuario: { ...prev.usuario, rol },
-      };
-    });
+    if (process.env.NODE_ENV !== 'production') {
+      setSesion((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          usuario: { ...prev.usuario, rol },
+        };
+      });
+    }
   }, []);
 
   const value = useMemo<PermissionsContextValue>(

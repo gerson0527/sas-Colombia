@@ -200,20 +200,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                    Cambiar rol (demo)
-                  </DropdownMenuLabel>
-                  {(['admin', 'supervisor', 'cajero', 'contador', 'solo_lectura'] as const).map((r) => (
-                    <DropdownMenuItem
-                      key={r}
-                      onClick={() => switchRole(r)}
-                      className={cn(r === rol && 'bg-primary/10')}
-                    >
-                      <ShieldCheck className="mr-2 h-4 w-4" />
-                      {ROL_META[r].label}
-                    </DropdownMenuItem>
-                  ))}
+                  {process.env.NODE_ENV !== 'production' && (
+                    <>
+                      {/* DEV ONLY: role switching controls are hidden in production. */}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                        Cambiar rol (demo)
+                      </DropdownMenuLabel>
+                      {(['admin', 'supervisor', 'cajero', 'contador', 'solo_lectura'] as const).map((r) => (
+                        <DropdownMenuItem
+                          key={r}
+                          onClick={() => switchRole(r)}
+                          className={cn(r === rol && 'bg-primary/10')}
+                        >
+                          <ShieldCheck className="mr-2 h-4 w-4" />
+                          {ROL_META[r].label}
+                        </DropdownMenuItem>
+                      ))}
+                    </>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={async () => {

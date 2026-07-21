@@ -11,20 +11,6 @@ export class ApiError extends Error {
   }
 }
 
-function getCookies(): string {
-  if (typeof document === 'undefined') return '';
-  return document.cookie;
-}
-
-function parseCookies(cookieStr: string): Record<string, string> {
-  return Object.fromEntries(
-    cookieStr.split(';').map((c) => {
-      const [k, ...v] = c.trim().split('=');
-      return [k, v.join('=')];
-    })
-  );
-}
-
 export async function apiFetch<T>(
   path: string,
   init: RequestInit = {}
@@ -32,17 +18,6 @@ export async function apiFetch<T>(
   const headers = new Headers(init.headers || {});
   if (!headers.has('Content-Type') && !(init.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
-  }
-
-  const cookies = getCookies();
-  const parsed = parseCookies(cookies);
-
-  // Extract JWT from cookie or use Authorization header if provided
-  const accessToken = parsed['access'] || parsed['__Host-access'];
-  const refreshToken = parsed['refresh'] || parsed['__Host-refresh'];
-
-  if (accessToken && !headers.has('Authorization')) {
-    headers.set('Authorization', `Bearer ${accessToken}`);
   }
 
   const doFetch = (): Promise<T> =>
@@ -71,27 +46,18 @@ export async function apiFetch<T>(
   try {
     return await doFetch();
   } catch (err) {
-    // On 401, attempt refresh if we have a refresh token
-    if (err instanceof ApiError && err.status === 401 && refreshToken) {
+    if (err instanceof ApiError && err.status === 401 && path !== '/v1/auth/refresh') {
       try {
-        await fetch(`${BASE_URL}/v1/auth/refresh`, {
+        const refreshResponse = await fetch(`${BASE_URL}/v1/auth/refresh`, {
           method: 'POST',
           credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${refreshToken}`,
           },
         });
-        // Retry with new cookies
-        const newCookies = getCookies();
-        const newParsed = parseCookies(newCookies);
-        const newAccess = newParsed['access'] || newParsed['__Host-access'];
-        if (newAccess) {
-          headers.set('Authorization', `Bearer ${newAccess}`);
-        }
+        if (!refreshResponse.ok) throw err;
         return await doFetch();
       } catch {
-        // Refresh failed, rethrow original error
         throw err;
       }
     }
