@@ -1,5 +1,25 @@
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+// Session state flag — prevents infinite refresh loops after logout
+const SESSION_FLAG_KEY = 'sas.session';
+
+export const sessionState = {
+  setLoggedIn() {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(SESSION_FLAG_KEY, '1');
+    }
+  },
+  setLoggedOut() {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(SESSION_FLAG_KEY);
+    }
+  },
+  isLoggedOut(): boolean {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem(SESSION_FLAG_KEY) !== '1';
+  },
+};
+
 export class ApiError extends Error {
   code: string;
   status: number;
@@ -11,10 +31,41 @@ export class ApiError extends Error {
   }
 }
 
+let isRefreshing = false;
+let refreshPromise: Promise<boolean> | null = null;
+
+async function tryRefresh(): Promise<boolean> {
+  if (sessionState.isLoggedOut()) return false;
+  if (isRefreshing && refreshPromise) return refreshPromise;
+
+  isRefreshing = true;
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${BASE_URL}/v1/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      return res.ok;
+    } catch {
+      return false;
+    } finally {
+      isRefreshing = false;
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
+}
+
 export async function apiFetch<T>(
   path: string,
   init: RequestInit = {}
 ): Promise<T> {
+  // Don't even try if we know we're logged out
+  if (sessionState.isLoggedOut() && path !== '/v1/auth/login') {
+    throw new ApiError('unauthorized', 'No autenticado', 401);
+  }
+
   const headers = new Headers(init.headers || {});
   if (!headers.has('Content-Type') && !(init.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
@@ -46,20 +97,22 @@ export async function apiFetch<T>(
   try {
     return await doFetch();
   } catch (err) {
-    if (err instanceof ApiError && err.status === 401 && path !== '/v1/auth/refresh') {
-      try {
-        const refreshResponse = await fetch(`${BASE_URL}/v1/auth/refresh`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-        if (!refreshResponse.ok) throw err;
-        return await doFetch();
-      } catch {
+    if (
+      err instanceof ApiError &&
+      err.status === 401 &&
+      path !== '/v1/auth/refresh' &&
+      path !== '/v1/auth/login' &&
+      !sessionState.isLoggedOut()
+    ) {
+      const refreshed = await tryRefresh();
+      if (!refreshed) {
+        sessionState.setLoggedOut();
+        if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
         throw err;
       }
+      return await doFetch();
     }
     throw err;
   }

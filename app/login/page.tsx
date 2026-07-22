@@ -124,7 +124,7 @@ export default function LoginPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="px-5 pb-5">
-              <form onSubmit={submit} className="space-y-3">
+              <form onSubmit={submit} className="space-y-3" suppressHydrationWarning>
                 <div className="space-y-1">
                   <Label htmlFor="email">Usuario o correo</Label>
                   <div className="relative">
@@ -137,6 +137,7 @@ export default function LoginPage() {
                       className="pl-8 h-9"
                       placeholder="cajero@mitienda.co"
                       autoComplete="email"
+                      suppressHydrationWarning
                     />
                   </div>
                 </div>
@@ -152,7 +153,7 @@ export default function LoginPage() {
                       ¿Olvidaste?
                     </button>
                   </div>
-                  <div className="relative">
+                  <div className="relative" suppressHydrationWarning>
                     <Lock className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       id="password"
@@ -162,6 +163,7 @@ export default function LoginPage() {
                       className="pl-8 pr-9 h-9"
                       placeholder="••••••••"
                       autoComplete="current-password"
+                      suppressHydrationWarning
                     />
                     <button
                       type="button"

@@ -96,7 +96,7 @@ export default function POSPage() {
   const router = useRouter();
   const { data: productosBase } = useProductos();
   const [productosExtra, setProductosExtra] = useState<Producto[]>([]);
-  const productos = [...(productosBase || []), ...productosExtra];
+  const productos = useMemo(() => [...(productosBase || []), ...productosExtra], [productosBase, productosExtra]);
   const { data: clientes } = useClientes();
   const [search, setSearch] = useState('');
   const [categoria, setCategoria] = useState('all');
@@ -150,6 +150,7 @@ export default function POSPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cart.length, checkoutOpen, authOpen]);
 
   // Autofocus inicial

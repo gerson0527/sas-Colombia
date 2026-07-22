@@ -25,6 +25,7 @@ import { SidebarNav } from '@/components/sidebar-nav';
 import { useEmpresa, useDocumentos } from '@/hooks/use-supabase-data';
 import { AMBIENTE_META, ROL_META } from '@/lib/constants';
 import { usePermissions } from '@/hooks/use-permissions';
+import { logout as logoutApi } from '@/lib/auth-service';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,17 +44,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { sesion, rol, switchRole, can } = usePermissions();
   const { data: empresa } = useEmpresa();
   const { data: documentos } = useDocumentos();
+  if (!sesion) return null;
   const ambiente = empresa?.ambiente ?? 'habilitacion';
   const isHab = ambiente === 'habilitacion';
   const rejectedCount = documentos.filter((d) => d.estadoDian === 'rechazado').length;
 
   const pageTitle = getPageTitle(pathname);
-  const initials = sesion.usuario.nombre
+  const userName = sesion?.usuario?.nombre || 'Usuario';
+  const initials = userName
     .split(' ')
+    .filter(Boolean)
     .slice(0, 2)
-    .map((n) => n[0])
-    .join('');
-  const firstName = sesion.usuario.nombre.split(' ')[0];
+    .map((n) => n[0] || '')
+    .join('')
+    .toUpperCase() || 'U';
+  const firstName = userName.split(' ')[0] || 'Usuario';
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
@@ -179,9 +184,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel>
                     <div className="flex flex-col">
-                      <span className="text-sm font-medium">{sesion.usuario.nombre}</span>
+                      <span className="text-sm font-medium">{userName}</span>
                       <span className="text-xs font-normal text-muted-foreground">
-                        {ROL_META[rol].label}
+                        {ROL_META[rol]?.label || rol}
                       </span>
                     </div>
                   </DropdownMenuLabel>
@@ -222,9 +227,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={async () => {
-                      const { createClient } = require('@/lib/supabase/client');
-                      const sup = createClient();
-                      await sup.auth.signOut();
+                      await logoutApi();
                       window.location.href = '/login';
                     }}
                     className="text-destructive focus:text-destructive cursor-pointer"

@@ -1,6 +1,6 @@
 'use client';
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
-import { api } from '@/lib/api-client';
+import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react';
+import { api, sessionState } from '@/lib/api-client';
 
 interface Caja {
   id: string;
@@ -40,8 +40,15 @@ export function CashSessionProvider({ children }: { children: ReactNode }) {
   const [cajas, setCajas] = useState<Caja[]>([]);
   const [sesiones, setSesiones] = useState<SesionCaja[]>([]);
   const [loading, setLoading] = useState(true);
+  const fetchingRef = useRef(false);
 
   const refrescar = useCallback(async () => {
+    if (fetchingRef.current) return;
+    if (sessionState.isLoggedOut()) {
+      setLoading(false);
+      return;
+    }
+    fetchingRef.current = true;
     try {
       setLoading(true);
       const [regs, sess] = await Promise.all([
@@ -50,14 +57,19 @@ export function CashSessionProvider({ children }: { children: ReactNode }) {
       ]);
       setCajas(regs as any);
       setSesiones(sess as any);
-    } catch (e) {
-      console.error('Error loading cash data:', e);
+    } catch {
+      // Errors are already handled by api-client (redirect on 401)
+      // We just silently stop — no log noise on logout
     } finally {
       setLoading(false);
+      fetchingRef.current = false;
     }
   }, []);
 
-  useEffect(() => { refrescar(); }, [refrescar]);
+  useEffect(() => {
+    refrescar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const abrirSesion = useCallback(async (cajaId: string, branchId: string, monto: number) => {
     const ses = await api.post<SesionCaja>('/v1/cash-sessions', {

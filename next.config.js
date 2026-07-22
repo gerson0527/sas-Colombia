@@ -1,4 +1,16 @@
 /** @type {import('next').NextConfig} */
+const isProduction = process.env.NODE_ENV === 'production';
+const supabaseOrigin = process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+const connectSrc = [
+  "'self'",
+  'http://localhost:8000',
+  'https://api.sas-colombia.com',
+];
+if (!isProduction && supabaseOrigin) {
+  connectSrc.push(supabaseOrigin);
+}
+
 const securityHeaders = [
   { key: 'X-DNS-Prefetch-Control', value: 'off' },
   { key: 'X-Frame-Options', value: 'DENY' },
@@ -17,7 +29,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      "connect-src 'self' http://localhost:8000 https://api.sas-colombia.com",
+      `connect-src ${connectSrc.join(' ')}`,
       "frame-ancestors 'none'",
     ].join('; '),
   },
