@@ -34,6 +34,7 @@ import {
   TIPO_DOCUMENTO_META,
   FORMA_PAGO_META,
   MEDIO_PAGO_META,
+  medioPagoLabelByCode,
   AMBIENTE_META,
 } from '@/lib/constants';
 import { formatCOP, formatDateTime, truncateMiddle } from '@/lib/format';
@@ -184,7 +185,7 @@ export default function DocumentDetailPage() {
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <Row label="Forma de pago" value={FORMA_PAGO_META[doc.formaPago].label} />
-                <Row label="Medio de pago" value={MEDIO_PAGO_META[doc.medioPago].label} />
+                <Row label="Medio de pago" value={medioPagoLabelByCode(doc.medioPago) || '—'} />
                 <Row label="Ambiente" value={AMBIENTE_META[doc.ambiente].label} />
               </CardContent>
             </Card>
@@ -279,9 +280,9 @@ export default function DocumentDetailPage() {
               <Button variant="outline" className="w-full justify-start">
                 <Download className="mr-2 h-4 w-4" /> Descargar XML
               </Button>
-              {(doc.estadoDian === 'rechazado' || doc.estadoDian === 'pendiente_envio') && (
+              {(doc.estadoDian === 'rechazado' || doc.estadoDian === 'pendiente_envio' || doc.estadoDian === 'borrador') && (
                 <Button variant="secondary" className="w-full justify-start" onClick={handleResend}>
-                  <Send className="mr-2 h-4 w-4" /> Reenviar a DIAN
+                  <Send className="mr-2 h-4 w-4" /> {doc.estadoDian === 'borrador' ? 'Enviar a DIAN' : 'Reenviar a DIAN'}
                 </Button>
               )}
               {doc.estadoDian !== 'anulado' && doc.estadoDian !== 'borrador' && (

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { api } from '@/lib/api-client';
 const supabase = createClient();
 import type {
   Cliente,
@@ -325,7 +326,10 @@ export function useClientes(): QueryState<Cliente> & {
 // useProductos
 // ============================================================================
 
-export function useProductos(): QueryState<Producto> & {
+export function useProductos(): {
+  data: Producto[];
+  loading: boolean;
+  error: string | null;
   create: (p: Partial<Producto>) => Promise<Producto | null>;
   update: (id: string, p: Partial<Producto>) => Promise<boolean>;
   remove: (id: string) => Promise<boolean>;
@@ -340,101 +344,99 @@ export function useProductos(): QueryState<Producto> & {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    (async () => {
-      const { data: rows, error: err } = await supabase
-        .from('productos')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (!active) return;
-      if (err) {
-        setError(err.message);
-        setData([]);
-      } else {
+    console.log('[useProductos] Fetching /v1/products...');
+    api.get('/v1/products')
+      .then((res: any) => {
+        if (!active) return;
+        console.log('[useProductos] Raw response:', res);
+        const arr = Array.isArray(res) ? res : (res?.data || []);
+        const mapped = arr.map((p: any) => ({
+          id: p.id,
+          codigo: p.code || p.id,
+          codigoUNSPSC: p.unspscCode,
+          nombre: p.name,
+          descripcion: p.description,
+          tipoItem: p.type || 'bien',
+          precioUnitario: Number(p.price) || 0,
+          unidadMedida: p.unitOfMeasure || '94',
+          iva: Number(p.taxRate) || 0,
+          inc: 0,
+          aplicaReteFuente: false,
+          aplicaReteICA: false,
+          aplicaReteIVA: false,
+          stock: Number(p.stock) || 0,
+          activo: p.isActive !== false,
+        }));
+        console.log('[useProductos] Mapped products:', mapped.length, mapped);
+        setData(mapped);
         setError(null);
-        setData((rows as ProductoRow[]).map(mapProducto));
-      }
-      setLoading(false);
-    })();
+        setLoading(false);
+      })
+      .catch((err: any) => {
+        if (!active) return;
+        console.error('[useProductos] Error:', err);
+        setError(err.message || 'Error loading products');
+        setData([]);
+        setLoading(false);
+      });
     return () => {
       active = false;
     };
   }, [tick]);
 
   const create = useCallback(async (p: Partial<Producto>): Promise<Producto | null> => {
-    const insertRow = {
-      codigo: p.codigo,
-      codigo_unspsc: p.codigoUNSPSC || null,
-      nombre: p.nombre,
-      descripcion: p.descripcion || null,
-      tipo_item: p.tipoItem || 'bien',
-      precio_unitario: p.precioUnitario || 0,
-      unidad_medida: p.unidadMedida || 'UND',
-      iva: p.iva ?? 0,
-      inc: p.inc || null,
-      aplica_rete_fuente: p.aplicaReteFuente || false,
-      aplica_rete_ica: p.aplicaReteICA || false,
-      aplica_rete_iva: p.aplicaReteIVA || false,
-      tasa_rete_fuente: p.tasaReteFuente || null,
-      tasa_rete_ica: p.tasaReteICA || null,
-      tasa_rete_iva: p.tasaReteIVA || null,
-      stock: p.stock ?? null,
-      stock_minimo: p.stockMinimo ?? null,
-      costo_unitario: p.costoUnitario || null,
-      cuenta_contable: p.cuentaContable || null,
-      activo: p.activo ?? true,
-    };
-    const { data: row, error: err } = await supabase
-      .from('productos')
-      .insert(insertRow)
-      .select()
-      .single();
-    if (err) {
-      setError(err.message);
+    try {
+      const created = await api.post('/v1/products', {
+        code: p.codigo,
+        name: p.nombre,
+        description: p.descripcion,
+        price: p.precioUnitario,
+        taxRate: p.iva,
+        stock: p.stock || 0,
+        unitOfMeasure: p.unidadMedida || '94',
+        type: p.tipoItem || 'bien'
+      });
+      refetch();
+      return created as any;
+    } catch (e: any) {
+      console.error(e);
       return null;
     }
-    const mapped = mapProducto(row as ProductoRow);
-    setData((prev) => [mapped, ...prev]);
-    return mapped;
-  }, []);
+  }, [refetch]);
 
   const update = useCallback(async (id: string, p: Partial<Producto>): Promise<boolean> => {
-    const updateRow: Record<string, unknown> = {};
-    if (p.codigo) updateRow.codigo = p.codigo;
-    if (p.codigoUNSPSC !== undefined) updateRow.codigo_unspsc = p.codigoUNSPSC || null;
-    if (p.nombre) updateRow.nombre = p.nombre;
-    if (p.descripcion !== undefined) updateRow.descripcion = p.descripcion || null;
-    if (p.tipoItem) updateRow.tipo_item = p.tipoItem;
-    if (p.precioUnitario !== undefined) updateRow.precio_unitario = p.precioUnitario;
-    if (p.unidadMedida) updateRow.unidad_medida = p.unidadMedida;
-    if (p.iva !== undefined) updateRow.iva = p.iva;
-    if (p.inc !== undefined) updateRow.inc = p.inc || null;
-    if (p.aplicaReteFuente !== undefined) updateRow.aplica_rete_fuente = p.aplicaReteFuente;
-    if (p.aplicaReteICA !== undefined) updateRow.aplica_rete_ica = p.aplicaReteICA;
-    if (p.aplicaReteIVA !== undefined) updateRow.aplica_rete_iva = p.aplicaReteIVA;
-    if (p.stock !== undefined) updateRow.stock = p.stock;
-    if (p.stockMinimo !== undefined) updateRow.stock_minimo = p.stockMinimo;
-    if (p.activo !== undefined) updateRow.activo = p.activo;
-
-    const { error: err } = await supabase.from('productos').update(updateRow).eq('id', id);
-    if (err) {
-      setError(err.message);
+    try {
+      await api.patch(`/v1/products/${id}`, {
+        code: p.codigo,
+        name: p.nombre,
+        description: p.descripcion,
+        price: p.precioUnitario,
+        taxRate: p.iva,
+        stock: p.stock,
+        unitOfMeasure: p.unidadMedida,
+        type: p.tipoItem,
+        isActive: p.activo
+      });
+      refetch();
+      return true;
+    } catch (e: any) {
+      console.error(e);
       return false;
     }
-    setData((prev) => prev.map((pr) => (pr.id === id ? { ...pr, ...p } : pr)));
-    return true;
-  }, []);
+  }, [refetch]);
 
   const remove = useCallback(async (id: string): Promise<boolean> => {
-    const { error: err } = await supabase.from('productos').delete().eq('id', id);
-    if (err) {
-      setError(err.message);
+    try {
+      await api.delete(`/v1/products/${id}`);
+      refetch();
+      return true;
+    } catch (e: any) {
+      console.error(e);
       return false;
     }
-    setData((prev) => prev.filter((p) => p.id !== id));
-    return true;
-  }, []);
+  }, [refetch]);
 
-  return { data, loading, error, refetch, create, update, remove };
+  return { data, loading, error, refetch: refetch as any, create, update, remove } as any;
 }
 
 // ============================================================================
@@ -452,21 +454,57 @@ export function useDocumentos(): QueryState<DocumentoElectronico> {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    (async () => {
-      const { data: rows, error: err } = await supabase
-        .from('documentos_electronicos')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (!active) return;
-      if (err) {
-        setError(err.message);
-        setData([]);
-      } else {
+    api.get<any>('/v1/invoices')
+      .then((res: any) => {
+        if (!active) return;
+        const items = Array.isArray(res) ? res : (res?.data || []);
+        const mapped: DocumentoElectronico[] = items.map((i: any) => {
+          let estadoDian: DocumentoElectronico['estadoDian'] = 'borrador';
+          if (i.status === 'accepted') estadoDian = 'aceptado';
+          else if (i.status === 'rejected') estadoDian = 'rechazado';
+          else if (i.status === 'queued' || i.status === 'submitted') estadoDian = 'pendiente_envio';
+          else if (i.status === 'draft') estadoDian = 'borrador';
+
+          return {
+            id: i.id,
+            tipoDocumento: 'factura_venta',
+            tipoOperacion: 'estandar',
+            numero: i.number,
+            resolucionId: i.prefix || '',
+            clienteId: i.customerId || '',
+            cliente: {} as any,
+            items: [],
+            formaPago: 'contado',
+            medioPago: (i.paymentMethodCode as any) || 'efectivo',
+            subtotal: Number(i.subtotal) || 0,
+            totalIva: Number(i.totalTax) || 0,
+            totalInc: 0,
+            totalRetenciones: 0,
+            totalDescuentos: 0,
+            totalCargos: 0,
+            total: Number(i.totalAmount) || 0,
+            estadoDian,
+            cufe: i.cufe,
+            qrCode: i.qrCode,
+            urlPdf: `/v1/invoices/${i.id}/pdf`,
+            urlXml: `/v1/invoices/${i.id}/xml`,
+            ambiente: 'habilitacion',
+            fechaEmision: i.issueDate || i.createdAt,
+            moneda: 'COP',
+            createdAt: i.createdAt || new Date().toISOString(),
+          };
+        });
+        setData(mapped);
         setError(null);
-        setData((rows as DocumentoRow[]).map(mapDocumento));
-      }
-      setLoading(false);
-    })();
+      })
+      .catch((err: any) => {
+        if (!active) return;
+        setError(err.message || 'Error al cargar documentos');
+        setData([]);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
     return () => {
       active = false;
     };
@@ -880,7 +918,7 @@ export function useCajas(): QueryState<Caja> {
 // ============================================================================
 
 export function useSesionesCaja(): QueryState<SesionCaja> {
-  const [data, setData] = useState<SesionCaja[]>([]);
+  const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -1004,33 +1042,51 @@ export function useInventario(productos: Producto[]): QueryState<InventarioItem>
     let active = true;
     setLoading(true);
     (async () => {
-      const { data: rows, error: err } = await supabase
-        .from('inventario_items')
-        .select('*')
-        .order('updated_at', { ascending: false });
-      if (!active) return;
-      if (err) {
-        setError(err.message);
-        setData([]);
-      } else {
-        setError(null);
+      try {
+        const movements = (await api.get<any[]>('/v1/inventory/movements')) || [];
+        if (!active) return;
         const prodMap = new Map(productos.map((p) => [p.id, p]));
+        const byProduct = new Map<string, { stock: number; ultimo: string; costo: number }>();
+        for (const m of movements) {
+          const pid = m.product?.id || m.productId;
+          if (!pid) continue;
+          const prev = byProduct.get(pid);
+          const qty = Number(m.quantity) || 0;
+          const sign = m.type === 'IN' ? 1 : (m.type === 'OUT' ? -1 : 0);
+          const delta = sign * Math.abs(qty);
+          if (prev) {
+            prev.stock += delta;
+            if (new Date(m.createdAt) > new Date(prev.ultimo)) prev.ultimo = m.createdAt;
+          } else {
+            const prod = prodMap.get(pid);
+            byProduct.set(pid, {
+              stock: delta,
+              ultimo: m.createdAt,
+              costo: prod?.costoUnitario || prod?.precioUnitario || 0,
+            });
+          }
+        }
+        setError(null);
         setData(
-          (rows as Array<Record<string, unknown>>).map((r) => ({
-            id: r.id as string,
-            productoId: r.producto_id as string,
-            producto: prodMap.get(r.producto_id as string) || ({} as Producto),
-            stockActual: r.stock_actual as number,
-            stockMinimo: r.stock_minimo as number,
-            stockMaximo: (r.stock_maximo as number) || 0,
-            ubicacion: (r.ubicacion as string) || undefined,
-            costoUnitario: Number(r.costo_unitario),
-            valorizado: Number(r.valorizado),
-            ultimoMovimiento: r.ultimo_movimiento as string,
+          Array.from(byProduct.entries()).map(([pid, v]) => ({
+            id: pid,
+            productoId: pid,
+            producto: prodMap.get(pid) || ({} as Producto),
+            stockActual: v.stock,
+            stockMinimo: 0,
+            stockMaximo: 0,
+            costoUnitario: v.costo,
+            valorizado: v.stock * v.costo,
+            ultimoMovimiento: v.ultimo,
           }))
         );
+      } catch (e: any) {
+        if (!active) return;
+        setError(e?.message || 'Error loading inventory');
+        setData([]);
+      } finally {
+        if (active) setLoading(false);
       }
-      setLoading(false);
     })();
     return () => {
       active = false;
@@ -1046,51 +1102,29 @@ export function useInventario(productos: Producto[]): QueryState<InventarioItem>
       referencia?: string;
       proveedorId?: string;
     }): Promise<boolean> => {
-      const prod = productos.find((p) => p.id === m.productoId);
-      if (!prod) return false;
-      const inv = data.find((i) => i.productoId === m.productoId);
-      const stockActual = inv?.stockActual ?? 0;
-      const delta = m.tipo === 'salida' || m.tipo === 'ajuste' ? -Math.abs(m.cantidad) : m.cantidad;
-      const stockResultante = stockActual + delta;
-
-      const { error: err } = await supabase.from('movimientos_inventario').insert({
-        producto_id: m.productoId,
-        tipo: m.tipo,
-        cantidad: delta,
-        stock_resultante: stockResultante,
-        motivo: m.motivo || null,
-        referencia: m.referencia || null,
-        proveedor_id: m.proveedorId || null,
-        usuario: 'Sistema',
-      });
-      if (err) {
-        setError(err.message);
+      try {
+        const tipoMap: Record<string, 'IN' | 'OUT' | 'ADJUST' | 'TRANSFER'> = {
+          entrada: 'IN',
+          salida: 'OUT',
+          ajuste: 'ADJUST',
+          devolucion: 'TRANSFER',
+        };
+        await api.post('/v1/inventory/movements', {
+          productId: m.productoId,
+          type: tipoMap[m.tipo] || 'ADJUST',
+          quantity: Math.abs(m.cantidad),
+          reason: m.motivo || m.referencia || undefined,
+          reference: m.proveedorId || m.referencia || undefined,
+        });
+        refetch();
+        return true;
+      } catch (e: any) {
+        console.error('[useInventario] registrarMovimiento error:', e);
+        setError(e?.message || 'Error al registrar movimiento');
         return false;
       }
-
-      if (inv) {
-        await supabase
-          .from('inventario_items')
-          .update({
-            stock_actual: stockResultante,
-            valorizado: stockResultante * (inv.costoUnitario || prod.costoUnitario || 0),
-            ultimo_movimiento: new Date().toISOString(),
-          })
-          .eq('id', inv.id);
-      } else {
-        await supabase.from('inventario_items').insert({
-          producto_id: m.productoId,
-          stock_actual: stockResultante,
-          stock_minimo: 0,
-          stock_maximo: 0,
-          costo_unitario: prod.costoUnitario || 0,
-          valorizado: stockResultante * (prod.costoUnitario || 0),
-        });
-      }
-      refetch();
-      return true;
     },
-    [data, productos, refetch]
+    [refetch]
   );
 
   return { data, loading, error, refetch, registrarMovimiento };

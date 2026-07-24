@@ -347,6 +347,24 @@ export interface SesionUsuario {
 
 // --- POS: venta rápida ---
 
+export interface SesionCaja {
+  id: string;
+  cashRegisterId: string;
+  branchId: string;
+  openedBy: string;
+  openedByUser?: { id: string; fullName: string };
+  closedBy?: string;
+  closedByUser?: { id: string; fullName: string };
+  openingAmount: number;
+  closingAmount?: number;
+  expectedAmount?: number;
+  difference?: number;
+  status: 'open' | 'closed' | 'reconciled' | 'voided';
+  openedAt: string;
+  closedAt?: string;
+  closeNotes?: string;
+}
+
 export interface CartItem {
   uid: string;
   productoId: string;
@@ -486,23 +504,7 @@ export interface MovimientoCaja {
   fecha: string;
 }
 
-export interface SesionCaja {
-  id: string;
-  cajaId: string;
-  caja: Caja;
-  usuarioId: string;
-  usuario: string;
-  fechaApertura: string;
-  fechaCierre?: string;
-  saldoInicial: number;
-  ingresos: number;
-  egresos: number;
-  ventas: number;
-  saldoFinal: number;
-  estado: EstadoCaja;
-  movimientos: MovimientoCaja[];
-  observaciones?: string;
-}
+
 
 // ============================================================================
 // Productos de facturación (configuración avanzada DIAN)

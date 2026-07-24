@@ -57,12 +57,18 @@ import { AppPagination } from '@/components/ui/app-pagination';
 import { EstadoDianBadge } from '@/components/estado-badge';
 import { usePermissions } from '@/hooks/use-permissions';
 import { useCashSession } from '@/hooks/use-cash-session';
-import { useProductos, useClientes } from '@/hooks/use-supabase-data';
+import { useResoluciones, useProductos, useClientes } from '@/hooks/use-supabase-data';
 import { api } from '@/lib/api-client';
 import { useRouter } from 'next/navigation';
-import { MEDIO_PAGO_META, FORMA_PAGO_META, CATEGORIA_PRODUCTO_FACTURACION_META } from '@/lib/constants';
+import { MEDIO_PAGO_META, FORMA_PAGO_META, CATEGORIA_PRODUCTO_FACTURACION_META, medioPagoLabelByCode } from '@/lib/constants';
 import { formatCOP } from '@/lib/format';
 import type { CartItem, MedioPago, FormaPago, EstadoDian, Producto, Cliente } from '@/lib/types';
+
+interface SalePayment {
+  paymentMethodCode: string;
+  amount: number;
+  reference?: string;
+}
 
 const CATEGORIAS_POS = [
   { key: 'all', label: 'Todos' },
@@ -70,6 +76,18 @@ const CATEGORIAS_POS = [
   { key: 'bienes', label: 'Bienes' },
   { key: 'tecnologia', label: 'Tecnología' },
   { key: 'papeleria', label: 'Papelería' },
+];
+
+// DIAN codes for medios de pago
+const PAYMENT_OPTIONS: Array<{ code: string; label: string; icon: any }> = [
+  { code: '10', label: 'Efectivo', icon: Banknote },
+  { code: '20', label: 'Tarjeta Crédito', icon: CreditCard },
+  { code: '21', label: 'Tarjeta Débito', icon: CreditCard },
+  { code: '40', label: 'Transferencia', icon: Building2 },
+  { code: '41', label: 'Nequi', icon: Smartphone },
+  { code: '42', label: 'Daviplata', icon: Smartphone },
+  { code: '13', label: 'Transferencia Bancaria', icon: Building2 },
+  { code: 'ZZ', label: 'Otros', icon: Banknote },
 ];
 
 const CONSUMIDOR_FINAL: Cliente = {
@@ -94,10 +112,10 @@ export default function POSPage() {
   const { can, limiteDescuento, sesion } = usePermissions();
   const { sesionAbierta, sesionAnteriorAbierta, isYesterday } = useCashSession() as any;
   const router = useRouter();
-  const { data: productosBase } = useProductos();
-  const [productosExtra, setProductosExtra] = useState<Producto[]>([]);
-  const productos = useMemo(() => [...(productosBase || []), ...productosExtra], [productosBase, productosExtra]);
-  const { data: clientes } = useClientes();
+  const { data: resoluciones } = useResoluciones();
+  const { data: productosBase, loading: loadingProd } = useProductos();
+  const productos = productosBase || [];
+  const { data: clientes, loading: loadingClientes } = useClientes();
   const [search, setSearch] = useState('');
   const [categoria, setCategoria] = useState('all');
   const [page, setPage] = useState(1);
@@ -115,13 +133,16 @@ export default function POSPage() {
     qrCode?: string;
     motivoRechazo?: string;
     items: CartItem[];
-    medioPago: MedioPago;
+    pagos: SalePayment[];
     efectivoRecibido?: number;
     vueltas?: number;
   } | null>(null);
 
   const [formaPago, setFormaPago] = useState<FormaPago>('contado');
-  const [medioPago, setMedioPago] = useState<MedioPago>('efectivo');
+  // Multiple payments: starts with one "efectivo" line; user can add more.
+  const [payments, setPayments] = useState<SalePayment[]>([
+    { paymentMethodCode: '10', amount: 0 },
+  ]);
   const [efectivoRecibido, setEfectivoRecibido] = useState<number>(0);
   const [descuentoGeneral, setDescuentoGeneral] = useState<number>(0);
   const [requiereAuth, setRequiereAuth] = useState(false);
@@ -298,13 +319,18 @@ export default function POSPage() {
 
     setProcesando(true);
     try {
-      const res = await api.post<{ data: { id: string; number: string } }>(
+      const res = await api.post<any>(
         '/v1/pos/sales',
         {
           sessionId: sesionAbierta.id,
           branchId: sesionAbierta.branchId,
-          customerId: cliente?.id,
-          paymentMethod: formaPago,
+          customerId: cliente?.id && cliente.id.length === 36 && cliente.id.includes('-') ? cliente.id : undefined,
+          paymentFormCode: formaPago === 'contado' ? '1' : '2',
+          payments: payments.filter(p => p.amount > 0).map(p => ({
+            paymentMethodCode: p.paymentMethodCode,
+            amount: p.amount,
+            reference: p.reference || undefined,
+          })),
           lines: cart.map(item => ({
             productId: item.productoId,
             quantity: item.cantidad,
@@ -312,20 +338,27 @@ export default function POSPage() {
             discount: item.descuento || 0,
           })),
           discount: descuentoGeneral,
-          idempotencyKey: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          idempotencyKey: crypto.randomUUID(),
         },
       );
+      const invoiceNumber = res?.number || res?.data?.number || 'POS';
+      const hasCash = payments.some(p => p.paymentMethodCode === '10');
+      const cashPayment = payments.find(p => p.paymentMethodCode === '10');
       setTicketVenta({
-        numero: res.data.number,
+        numero: invoiceNumber,
         total: totals.total,
         estadoDian: 'pendiente_envio',
         items: [...cart],
-        medioPago,
-        efectivoRecibido: medioPago === 'efectivo' ? efectivoRecibido : undefined,
-        vueltas: medioPago === 'efectivo' ? Math.max(0, efectivoRecibido - totals.total) : 0,
+        pagos: [...payments.filter(p => p.amount > 0)],
+        efectivoRecibido: hasCash && cashPayment ? Number(cashPayment.amount) : undefined,
+        vueltas: hasCash && cashPayment
+          ? Math.max(0, Number(cashPayment.amount) - totals.total)
+          : 0,
       });
-      toast.success(`Venta ${res.data.number} registrada`);
+      toast.success(`Venta ${invoiceNumber} registrada`);
       setCheckoutOpen(false);
+      setPayments([{ paymentMethodCode: '10', amount: 0 }]);
+      setEfectivoRecibido(0);
       setCart([]);
     } catch (e: any) {
       toast.error(`Error al cobrar: ${e.message}`);
@@ -340,36 +373,11 @@ export default function POSPage() {
     searchInputRef.current?.focus();
   }
 
-  function generar50Productos() {
-    const ADJETIVOS = ['Premium', 'Pro', 'Básico', 'Avanzado', 'Económico', 'Industrial', 'Compacto', 'Ultra', 'Max', 'Lite'];
-    const NOMBRES = ['Teclado', 'Monitor', 'Cable', 'Cargador', 'Soporte', 'Adaptador', 'Funda', 'Maletín', 'Memoria', 'Disco Duro'];
-    const CATEGORIAS = ['bien', 'servicio'];
-    const nuevos = Array.from({ length: 50 }).map((_, i) => {
-      const nombre = `${NOMBRES[Math.floor(Math.random() * NOMBRES.length)]} ${ADJETIVOS[Math.floor(Math.random() * ADJETIVOS.length)]} ${i + 1}`;
-      const precio = Math.floor(Math.random() * 50) * 5000 + 10000;
-      return {
-        id: `gen-${Date.now()}-${i}`,
-        codigo: `GEN-${1000 + i}`,
-        nombre,
-        descripcion: `Descripción generada para ${nombre}`,
-        precioUnitario: precio,
-        iva: 19,
-        inc: 0,
-        tipoItem: CATEGORIAS[Math.floor(Math.random() * CATEGORIAS.length)] as 'bien' | 'servicio',
-        unidadMedida: 'UND' as const,
-        aplicaReteFuente: false,
-        aplicaReteICA: false,
-        aplicaReteIVA: false,
-        activo: true,
-        estado: 'activo'
-      };
-    });
-    const todos = [...productosExtra, ...nuevos];
-    setProductosExtra(todos);
-    toast.success('50 productos de prueba generados');
-  }
-
-  const vueltas = medioPago === 'efectivo' ? Math.max(0, efectivoRecibido - totals.total) : 0;
+  const vueltas = (() => {
+    const cash = payments.find(p => p.paymentMethodCode === '10');
+    if (!cash) return 0;
+    return Math.max(0, (Number(cash.amount) || 0) - totals.total);
+  })();
 
   return (
     <div className="flex h-full flex-col overflow-hidden gap-4">
@@ -433,9 +441,6 @@ export default function POSPage() {
               <span className="mx-1">·</span>
               <span><kbd className="rounded bg-background px-1 font-mono">Esc</kbd> cancelar</span>
             </div>
-            <Button variant="outline" size="sm" onClick={generar50Productos} className="h-11">
-              + 50 Prods
-            </Button>
           </div>
 
           {/* Category chips */}
@@ -691,57 +696,117 @@ export default function POSPage() {
                 </Select>
               </div>
 
-              <div className="space-y-1.5">
-                <Label>Medio de pago</Label>
-                <div className="grid grid-cols-3 gap-2">
-                  {([
-                    { key: 'efectivo', label: 'Efectivo', icon: Banknote },
-                    { key: 'tarjeta_credito', label: 'T. Crédito', icon: CreditCard },
-                    { key: 'tarjeta_debito', label: 'T. Débito', icon: CreditCard },
-                    { key: 'transferencia', label: 'Transfer.', icon: Building2 },
-                    { key: 'nequi', label: 'Nequi', icon: Smartphone },
-                    { key: 'daviplata', label: 'Daviplata', icon: Smartphone },
-                  ] as const).map((m) => (
-                    <button
-                      key={m.key}
-                      onClick={() => setMedioPago(m.key)}
-                      className={`flex flex-col items-center gap-1 rounded-md border-2 px-2 py-3 text-xs font-medium transition-colors ${medioPago === m.key
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-border hover:border-primary/40'
-                        }`}
-                    >
-                      <m.icon className="h-4 w-4" />
-                      {m.label}
-                    </button>
-                  ))}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Medios de pago</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => {
+                      const available = PAYMENT_OPTIONS.filter(
+                        o => !payments.some(p => p.paymentMethodCode === o.code),
+                      );
+                      const next = available[0]?.code || '20';
+                      setPayments([...payments, { paymentMethodCode: next, amount: 0 }]);
+                    }}
+                    disabled={payments.length >= PAYMENT_OPTIONS.length}
+                  >
+                    <Plus className="mr-1 h-3 w-3" /> Agregar medio
+                  </Button>
                 </div>
-              </div>
 
-              {medioPago === 'efectivo' && (
                 <div className="space-y-2">
-                  <div className="space-y-1.5">
-                    <Label>Efectivo recibido</Label>
-                    <Input
-                      type="number"
-                      value={efectivoRecibido}
-                      onChange={(e) => setEfectivoRecibido(Number(e.target.value))}
-                      placeholder="0"
-                      className="text-lg"
-                    />
-                  </div>
-                  {efectivoRecibido >= totals.total && (
-                    <div className="flex items-center justify-between rounded-md border border-success/30 bg-success/10 p-3">
-                      <span className="text-sm font-medium text-success">Vueltas</span>
-                      <span className="text-lg font-bold text-success">{formatCOP(vueltas)}</span>
-                    </div>
-                  )}
-                  {efectivoRecibido > 0 && efectivoRecibido < totals.total && (
-                    <p className="text-sm text-destructive">
-                      Falta {formatCOP(totals.total - efectivoRecibido)}
-                    </p>
-                  )}
+                  {payments.map((p, idx) => {
+                    const opt = PAYMENT_OPTIONS.find(o => o.code === p.paymentMethodCode);
+                    const Icon = opt?.icon || Banknote;
+                    return (
+                      <div key={idx} className="flex items-center gap-2 rounded-md border border-border bg-card p-2">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <Select
+                          value={p.paymentMethodCode}
+                          onValueChange={(v) => {
+                            const next = [...payments];
+                            next[idx] = { ...p, paymentMethodCode: v };
+                            setPayments(next);
+                          }}
+                        >
+                          <SelectTrigger className="h-9 flex-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {PAYMENT_OPTIONS.map(o => (
+                              <SelectItem key={o.code} value={o.code} disabled={
+                                payments.some((q, i) => i !== idx && q.paymentMethodCode === o.code)
+                              }>
+                                {o.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Input
+                          type="number"
+                          value={p.amount || ''}
+                          onChange={(e) => {
+                            const next = [...payments];
+                            next[idx] = { ...p, amount: Number(e.target.value) || 0 };
+                            setPayments(next);
+                          }}
+                          placeholder="0"
+                          className="h-9 w-32 text-right"
+                        />
+                        {payments.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 shrink-0 text-destructive"
+                            onClick={() => {
+                              const next = payments.filter((_, i) => i !== idx);
+                              setPayments(next);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
+
+                {/* Summary: how much is left */}
+                <div className="flex items-center justify-between rounded-md border border-dashed border-border bg-muted/30 px-3 py-2 text-sm">
+                  <span className="text-muted-foreground">
+                    Cobrado: <span className="font-medium text-foreground">{formatCOP(payments.reduce((s, p) => s + (p.amount || 0), 0))}</span>
+                    {' / '}
+                    <span className="font-medium text-foreground">{formatCOP(totals.total)}</span>
+                  </span>
+                  {(() => {
+                    const cobrado = payments.reduce((s, p) => s + (p.amount || 0), 0);
+                    const diff = totals.total - cobrado;
+                    if (Math.abs(diff) < 0.5) return <span className="text-xs font-medium text-success">Completo</span>;
+                    if (diff > 0) return <span className="text-xs font-medium text-destructive">Falta {formatCOP(diff)}</span>;
+                    return <span className="text-xs font-medium text-success">Cambio {formatCOP(Math.abs(diff))}</span>;
+                  })()}
+                </div>
+
+                {/* Show change when there's overpayment in cash */}
+                {(() => {
+                  const cash = payments.find(p => p.paymentMethodCode === '10');
+                  if (!cash) return null;
+                  const totalCash = Number(cash.amount) || 0;
+                  if (totalCash <= totals.total) return null;
+                  return (
+                    <div className="flex items-center justify-between rounded-md border border-success/30 bg-success/10 px-3 py-2">
+                      <span className="text-sm font-medium text-success">Vueltas (efectivo)</span>
+                      <span className="text-base font-bold text-success">{formatCOP(totalCash - totals.total)}</span>
+                    </div>
+                  );
+                })()}
+              </div>
 
               <Separator />
 
@@ -754,7 +819,13 @@ export default function POSPage() {
               <SheetClose asChild><Button variant="outline" className="h-12 text-base">Cancelar</Button></SheetClose>
               <Button
                 onClick={cobrar}
-                disabled={procesando || (medioPago === 'efectivo' && efectivoRecibido < totals.total)}
+                disabled={(() => {
+                  if (procesando) return true;
+                  const total = payments.reduce((s, p) => s + (p.amount || 0), 0);
+                  if (total < totals.total - 0.5) return true;
+                  if (payments.every(p => (p.amount || 0) <= 0)) return true;
+                  return false;
+                })()}
                 className="h-12 text-base font-semibold"
               >
                 {procesando ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle2 className="mr-2 h-5 w-5" />}
@@ -885,13 +956,14 @@ function TicketDialog({
     qrCode?: string;
     motivoRechazo?: string;
     items: CartItem[];
-    medioPago: MedioPago;
+    pagos?: SalePayment[];
     efectivoRecibido?: number;
     vueltas?: number;
   } | null;
   cliente: Cliente;
   onClose: () => void;
 }) {
+  const { resoluciones } = useResoluciones();
   const [promptOpen, setPromptOpen] = useState(false);
   const [promptType, setPromptType] = useState<'whatsapp' | 'email' | null>(null);
   const [promptValue, setPromptValue] = useState('');
@@ -1014,7 +1086,11 @@ function TicketDialog({
             <p className="font-bold">INNOVA ANDINA S.A.S.</p>
             <p>RESPONSABLE DE IVA NIT: 901.548.326-7</p>
             <p>Actividad principal 1040</p>
-            <p>RESOLUCION NO 18764112599725</p>
+            {(resoluciones || []).find((r: any) => r.activa || r.isActive) ? (
+              <p>RESOLUCION NO {(resoluciones || []).find((r: any) => r.activa || r.isActive)!.numeroResolucion || (resoluciones || []).find((r: any) => r.activa || r.isActive)!.number}</p>
+            ) : (
+              <p>SIN RESOLUCIÓN (Borrador)</p>
+            )}
             <p>CRA. 13 # 82-12, OF. 401 BOGOTÁ</p>
             <p>Factura de Venta Electrónica</p>
             <p>FECHA: {new Date().toLocaleString('es-CO')}  PREFIJO: FE  {ticket.numero.replace('FE-', '')}</p>
@@ -1049,8 +1125,18 @@ function TicketDialog({
             </div>
             {ticket.efectivoRecibido !== undefined && (
               <div className="flex justify-end gap-4">
-                <span>ENTREGADO {MEDIO_PAGO_META[ticket.medioPago].label.toUpperCase()} $</span>
+                <span>ENTREGADO (EFECTIVO) $</span>
                 <span>{formatCOP(ticket.efectivoRecibido).replace('$', '').trim()}</span>
+              </div>
+            )}
+            {ticket.pagos && ticket.pagos.length > 1 && (
+              <div className="flex flex-col items-end gap-0.5 pt-1 border-t border-dashed border-border mt-1">
+                {ticket.pagos.map((p, i) => (
+                  <div key={i} className="flex justify-end gap-4 text-[10px]">
+                    <span className="text-muted-foreground">{medioPagoLabelByCode(p.paymentMethodCode)}</span>
+                    <span>{formatCOP(p.amount).replace('$', '').trim()}</span>
+                  </div>
+                ))}
               </div>
             )}
             {ticket.vueltas !== undefined && ticket.vueltas > 0 && (

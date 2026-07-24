@@ -17,6 +17,7 @@ import {
   Store,
   FileSpreadsheet,
   ShoppingCart,
+  Receipt,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -51,7 +52,8 @@ const groups: NavGroup[] = [
     label: 'Punto de venta',
     items: [
       { label: 'Nueva venta', href: '/pos', icon: ShoppingCart },
-      { label: 'Documentos', href: '/documents', icon: FileText },
+      { label: 'Facturas realizadas', href: '/invoices', icon: Receipt },
+      { label: 'Documentos electr.', href: '/documents', icon: FileText },
       { label: 'Productos de facturación', href: '/invoicing-products', icon: FileSpreadsheet },
     ],
   },
@@ -111,7 +113,7 @@ export function SidebarNav() {
             setOpenGroups((prev) => ({ ...prev, [group.label]: open }))
           }
         >
-          <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground">
+          <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground">
             {group.label}
             <ChevronDown
               className={cn(
@@ -131,7 +133,7 @@ export function SidebarNav() {
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    'group flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors',
+                    'group flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
                     active
                       ? 'bg-primary/10 text-primary'
                       : 'text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -139,7 +141,7 @@ export function SidebarNav() {
                 >
                   <Icon
                     className={cn(
-                      'h-4 w-4 shrink-0',
+                      'h-3.5 w-3.5 shrink-0',
                       active
                         ? 'text-primary'
                         : 'text-muted-foreground group-hover:text-foreground'

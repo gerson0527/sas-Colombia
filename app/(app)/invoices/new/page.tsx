@@ -56,6 +56,7 @@ import {
 } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useClientes, useProductos, useResoluciones, useEmpresa } from '@/hooks/use-supabase-data';
+import { api } from '@/lib/api-client';
 import {
   FORMA_PAGO_META,
   MEDIO_PAGO_META,
@@ -158,37 +159,59 @@ export default function NewInvoicePage() {
     setItems((prev) => prev.filter((i) => i.uid !== uid));
   }
 
-  function handleSaveDraft() {
+  async function createInvoiceOnBackend(statusDraft: boolean) {
     if (!cliente) {
-      toast.error('Selecciona un cliente antes de guardar el borrador.');
+      toast.error('Selecciona un cliente antes de guardar/emitir.');
       return;
     }
     if (items.length === 0) {
       toast.error('Agrega al menos un ítem al documento.');
       return;
     }
-    toast.success('Borrador guardado', {
-      description: `Documento para ${cliente.razonSocial} con ${items.length} ítem(es).`,
-    });
-    router.push('/documents');
+    try {
+      const payload = {
+        invoiceType: '01',
+        paymentFormCode: formaPago === 'contado' ? '1' : '2',
+        paymentMethodCode: '10',
+        issueDate: new Date().toISOString(),
+        customerId: cliente.id,
+        prefix: resolucion?.prefijo || 'FAC',
+        idempotencyKey: crypto.randomUUID(),
+        lines: items.map((it, idx) => ({
+          lineNumber: idx + 1,
+          description: it.descripcion,
+          quantity: it.cantidad,
+          unitPrice: it.precioUnitario,
+          lineExtensionAmount: it.cantidad * it.precioUnitario - it.descuento,
+          taxCode: '01',
+          taxPercent: it.iva,
+          taxAmount: ((it.cantidad * it.precioUnitario - it.descuento) * it.iva) / 100,
+        })),
+        taxTotals: [
+          {
+            taxId: '01',
+            taxPercent: 19,
+            taxableAmount: totals.subtotal,
+            taxAmount: totals.totalIva,
+          },
+        ],
+      };
+      const res: any = await api.post('/v1/invoices', payload);
+      toast.success(statusDraft ? 'Factura guardada correctamente' : 'Documento registrado y generado', {
+        description: `Factura ${res?.snapshot?.number || ''} creada exitosamente.`,
+      });
+      router.push('/documents');
+    } catch (e: any) {
+      toast.error(e?.message || 'Error al crear la factura');
+    }
+  }
+
+  function handleSaveDraft() {
+    createInvoiceOnBackend(true);
   }
 
   function handleEmit() {
-    if (!cliente) {
-      toast.error('Selecciona un cliente antes de emitir.');
-      return;
-    }
-    if (items.length === 0) {
-      toast.error('Agrega al menos un ítem al documento.');
-      return;
-    }
-    toast.success('Documento enviado a DIAN', {
-      description:
-        ambiente === 'habilitacion'
-          ? 'Enviado a ambiente de habilitación (pruebas).'
-          : 'Enviado a ambiente de producción. Genera documento legalmente válido.',
-    });
-    router.push('/documents');
+    createInvoiceOnBackend(false);
   }
 
   return (

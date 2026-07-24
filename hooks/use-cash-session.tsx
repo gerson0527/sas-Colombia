@@ -31,6 +31,8 @@ interface CashContext {
   loading: boolean;
   abrirSesion: (cajaId: string, branchId: string, monto: number) => Promise<SesionCaja>;
   cerrarSesion: (sesionId: string, montoFinal: number, notas?: string) => Promise<void>;
+  crearCaja: (data: { name: string; branchId?: string; location?: string; openingBalanceDefault?: number }) => Promise<void>;
+  eliminarCaja: (id: string) => Promise<{ deleted: boolean; message: string }>;
   refrescar: () => Promise<void>;
 }
 
@@ -43,10 +45,21 @@ export function CashSessionProvider({ children }: { children: ReactNode }) {
   const fetchingRef = useRef(false);
 
   const refrescar = useCallback(async () => {
-    if (fetchingRef.current) return;
     if (sessionState.isLoggedOut()) {
       setLoading(false);
       return;
+    }
+    // Always run; serialise concurrent calls instead of skipping them
+    if (fetchingRef.current) {
+      // Wait for in-flight fetch to complete, then run once more
+      await new Promise<void>((resolve) => {
+        const interval = setInterval(() => {
+          if (!fetchingRef.current) {
+            clearInterval(interval);
+            resolve();
+          }
+        }, 50);
+      });
     }
     fetchingRef.current = true;
     try {
@@ -89,10 +102,21 @@ export function CashSessionProvider({ children }: { children: ReactNode }) {
     await refrescar();
   }, [refrescar]);
 
+  const crearCaja = useCallback(async (data: { name: string; branchId?: string; location?: string; openingBalanceDefault?: number }) => {
+    await api.post('/v1/cash-registers', data);
+    await refrescar();
+  }, [refrescar]);
+
+  const eliminarCaja = useCallback(async (id: string) => {
+    const res = await api.delete<{ deleted: boolean; message: string }>(`/v1/cash-registers/${id}`);
+    await refrescar();
+    return res;
+  }, [refrescar]);
+
   const sesionAbierta = sesiones.find(s => s.status === 'open') || null;
 
   return (
-    <Ctx.Provider value={{ cajas, sesiones, sesionAbierta, loading, abrirSesion, cerrarSesion, refrescar }}>
+    <Ctx.Provider value={{ cajas, sesiones, sesionAbierta, loading, abrirSesion, cerrarSesion, crearCaja, eliminarCaja, refrescar }}>
       {children}
     </Ctx.Provider>
   );

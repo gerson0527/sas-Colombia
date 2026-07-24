@@ -39,7 +39,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
       </head>
-      <body className={inter.className}>
+      <body className={inter.className} suppressHydrationWarning>
         <ThemeProvider>
           <TooltipProvider delayDuration={200}>
             <CashSessionProvider>{children}</CashSessionProvider>

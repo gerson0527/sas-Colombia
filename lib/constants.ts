@@ -88,6 +88,17 @@ export const MEDIO_PAGO_META: Record<MedioPago, { label: string; codigo: string 
   otros: { label: 'Otros', codigo: 'ZZ' },
 };
 
+export const MEDIO_PAGO_BY_CODE: Record<string, MedioPago> = Object.entries(MEDIO_PAGO_META).reduce(
+  (acc, [key, meta]) => ({ ...acc, [meta.codigo]: key as MedioPago }),
+  {} as Record<string, MedioPago>,
+);
+
+export function medioPagoLabelByCode(code: string | number | undefined | null): string {
+  if (!code) return '—';
+  const key = MEDIO_PAGO_BY_CODE[String(code)];
+  return key ? MEDIO_PAGO_META[key].label : String(code);
+}
+
 export const TIPO_IDENTIFICACION_META: Record<TipoIdentificacion, { label: string; codigo: string }> = {
   CC: { label: 'Cédula de Ciudadanía', codigo: '11' },
   NIT: { label: 'NIT', codigo: '31' },
@@ -197,19 +208,19 @@ export const PERMISSION_MATRIX: Record<RolUsuario, Partial<Record<Permiso, boole
 // Items del sidebar visibles por rol
 export const SIDEBAR_ROUTES_BY_ROLE: Record<RolUsuario, string[]> = {
   admin: [
-    '/dashboard', '/pos', '/documents',
+    '/dashboard', '/pos', '/documents', '/invoices',
     '/invoicing-products', '/clients', '/suppliers', '/products', '/inventory',
     '/resolutions', '/cash-registers', '/reports', '/users', '/settings', '/settings/billing',
   ],
   supervisor: [
-    '/dashboard', '/pos', '/documents',
+    '/dashboard', '/pos', '/documents', '/invoices',
     '/clients', '/products', '/inventory', '/cash-registers', '/reports',
   ],
-  cajero: ['/pos', '/cash-registers', '/clients'],
+  cajero: ['/pos', '/invoices', '/cash-registers', '/clients'],
   contador: [
-    '/dashboard', '/documents', '/resolutions', '/reports',
+    '/dashboard', '/documents', '/invoices', '/resolutions', '/reports',
   ],
-  solo_lectura: ['/dashboard', '/documents'],
+  solo_lectura: ['/dashboard', '/documents', '/invoices'],
 };
 
 export const AMBIENTE_META: Record<Ambiente, { label: string; tone: string; banner: string }> = {

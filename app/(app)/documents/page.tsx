@@ -234,10 +234,28 @@ export default function DocumentsPage() {
                           <Eye className="h-4 w-4" />
                         </Link>
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8" aria-label="Descargar PDF">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8"
+                        aria-label="Descargar PDF"
+                        onClick={() => {
+                          const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                          window.open(`${baseUrl}/v1/invoices/${doc.id}/pdf`, '_blank');
+                        }}
+                      >
                         <FileDown className="h-4 w-4" />
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8" aria-label="Descargar XML">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8"
+                        aria-label="Descargar XML"
+                        onClick={() => {
+                          const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                          window.open(`${baseUrl}/v1/invoices/${doc.id}/xml`, '_blank');
+                        }}
+                      >
                         <Download className="h-4 w-4" />
                       </Button>
                       <Button
